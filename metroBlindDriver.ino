@@ -85,6 +85,12 @@ int currentMode = -1;
 unsigned long lastMovementMillis = 0;
 
 
+//print a message to Serial port if in DEBUG_MODE
+void debugMessage(String message) {
+#ifdef DEBUG_MODE
+  Serial.println(message);
+#endif
+}
 
 //returns the 8 digits padded BIN  representation of a byte
 String getPaddedBin(byte bitString) {
@@ -96,24 +102,19 @@ String getPaddedBin(byte bitString) {
   return paddedString.substring(paddedString.length() - 8);
 }
 
-//print a message to Serial port if in DEBUG_MODE
-void debugMessage(String message) {
-#ifdef DEBUG_MODE
-  Serial.println(message);
-#endif
-}
+
 
 
 //outputs a bitString to blind control signal pins and saves it as the current one
 //this method won't reset pins once the requested position is reached
 //this method doesn't check the existance of the requested newBitString
 void setStopSelector(byte newBitString, byte& currentBitString) {
-  //Serial.println(getPaddedBin(newBitString));
-  //Serial.println(getPaddedBin(currentBitString));
+  //debugMessage(getPaddedBin(newBitString));
+  //debugMessage(getPaddedBin(currentBitString));
   //note that hte least significant bit is never used, as there's no pin using it
   if (newBitString != currentBitString) {
     for (int i = 7; i >= 1; i--) {
-      // Serial.println(((newBitString >> (i )) & 1) == 1 ? "1" : "0");
+      // debugMessage(((newBitString >> (i )) & 1) == 1 ? "1" : "0");
       digitalWrite(PIN_MAP[7 - i], ((newBitString >> (i)) & 1) == 1 ? HIGH : LOW);
     }
 
@@ -175,7 +176,7 @@ byte readBlindPosition(byte& currentBitString, bool& motionEnabled) {
   //reset previous state
   setStopSelector(savedBitString, currentBitString);
   setMotionEnabled(savedMotionEnabled, motionEnabled);
-  Serial.println("readBlindPosition returning:" + getPaddedBin(currentPosition));
+  debugMessage("readBlindPosition returning:" + getPaddedBin(currentPosition));
   return currentPosition;
 }
 
@@ -258,17 +259,17 @@ void parseSerialCommands(String command, byte& currentBitString, bool& motionEna
 void getClosestProgramPosition(int& currentProgramPos, byte& currentBitString, bool& motionEnabled) {
   byte currentPosition = readBlindPosition(currentBitString, motionEnabled);
   int commandsLength = sizeof(COMMANDS) / sizeof(COMMANDS[0]);
-  Serial.println(String(commandsLength));
+  debugMessage(String(commandsLength));
   int currentPositionIndex = -1;
   for (int i = 0; i < commandsLength; i++) {
-    Serial.println("getClosestProgramPosition (COMMANDS[i] =" + getPaddedBin(COMMANDS[i]) + " currentPosition=" + getPaddedBin(currentPosition));
+    debugMessage("getClosestProgramPosition (COMMANDS[i] =" + getPaddedBin(COMMANDS[i]) + " currentPosition=" + getPaddedBin(currentPosition));
     if (COMMANDS[i] == currentPosition) {
       currentPositionIndex = i;
       break;
     }
   }
   if (currentPositionIndex == -1) {
-    Serial.println("getClosestProgramPosition Error, non existent position detected, currentPosition=" + getPaddedBin(currentPosition) + " currentBitString=" + getPaddedBin(currentBitString));
+    debugMessage("getClosestProgramPosition Error, non existent position detected, currentPosition=" + getPaddedBin(currentPosition) + " currentBitString=" + getPaddedBin(currentBitString));
     currentProgramPos = -1;
   }
   int programLength = sizeof(program) / sizeof(program[0]);
@@ -276,12 +277,12 @@ void getClosestProgramPosition(int& currentProgramPos, byte& currentBitString, b
     if (program[i] >= currentPositionIndex) {
       //identified the position in the program next to the current one
       currentProgramPos = i;
-      Serial.println("getClosestProgramPosition returning " + String(currentProgramPos));
+      debugMessage("getClosestProgramPosition returning " + String(currentProgramPos));
       return;
     }
   }
   currentProgramPos = 0;
-  Serial.println("getClosestProgramPosition returning " + String(currentProgramPos));
+  debugMessage("getClosestProgramPosition returning " + String(currentProgramPos));
 }
 
 //sets the current motion mode, either program or manual, stops motion if required,
@@ -289,11 +290,11 @@ void getClosestProgramPosition(int& currentProgramPos, byte& currentBitString, b
 void setMode(int& currentMode, int newMode, byte& currentBitString, int& currentProgramPos, byte& lastReachedManualStop, bool& motionEnabled) {
   if (currentMode == newMode) {
     //nothing to do
-    Serial.println("setMode nothing to do");
+    debugMessage("setMode nothing to do");
     return;
   }
   if (newMode != MANUAL_MODE && newMode != PROGRAM_MODE) {
-    Serial.println("setMode: invalid mode requested, received " + String(newMode));
+    debugMessage("setMode: invalid mode requested, received " + String(newMode));
   }
   currentMode = newMode;
   stopBlind(currentBitString);
@@ -332,7 +333,7 @@ void loop() {
 
   // self reset every week, just in case I f*cked up and some variable would
   // overflow left unchecked
-  //Serial.println(String((RTCDateTime-bootTime).totalseconds())+" "+String(SECONDS_PER_DAY*7));
+  //debugMessage(String((RTCDateTime-bootTime).totalseconds())+" "+String(SECONDS_PER_DAY*7));
   /*if ((RTCDateTime - bootTime).totalseconds() >= SECONDS_PER_DAY * 7) {
     asm volatile("  jmp 0");
     }*/
@@ -357,12 +358,12 @@ void loop() {
   //  - (Loop repeats until rotation stops, signals generation are reiterated on each loop)
   //  - rotation is stopped, check if a valid position has been reached, and move on to the next step in the program
   //  - sleep (TODO make a non blockng one)
-  Serial.println(String(currentMode));
+  debugMessage(String(currentMode));
   if (currentMode == PROGRAM_MODE) {
     if (currentProgramPos == -1) {
       //at boot we need to recover what the next position is
       getClosestProgramPosition(currentProgramPos, currentBitString, motionEnabled);
-      Serial.println("Recovering next program position: " + String(currentProgramPos));
+      debugMessage("Recovering next program position: " + String(currentProgramPos));
     }
     if (currentProgramPos >= 0 ) {
       if (lastReachedProgramPos < currentProgramPos && millis() - lastMovementMillis > SECONDS_BETWEEN_STEPS * 1000) {
@@ -383,17 +384,17 @@ void loop() {
             currentProgramPos = currentProgramPos == ((sizeof(program) / sizeof(program[0])) - 1) ? 0 : currentProgramPos + 1;
             lastReachedProgramPos = currentProgramPos > 0 ? lastReachedProgramPos : -1;
           } else {
-            Serial.println("Requested position not reached, but  blind not moving, possible malfunction");
+            debugMessage("Requested position not reached, but  blind not moving, possible malfunction");
             digitalWrite(LED_PIN, HIGH);
           }
-          Serial.println("Stopped at: " + getPaddedBin(currentBlindPosition) + " bitString: " + getPaddedBin(currentBitString));
+          debugMessage("Stopped at: " + getPaddedBin(currentBlindPosition) + " bitString: " + getPaddedBin(currentBitString));
           stopBlind(currentBitString);
           lastMovementMillis = millis();
         }
       }
     }
     else {
-      Serial.println("ERROR, could not recover program position");
+      debugMessage("ERROR, could not recover program position");
       digitalWrite(LED_PIN, HIGH);
       delay(2000);
     }
@@ -409,15 +410,15 @@ void loop() {
       if (currentBlindPosition == currentBitString) {
         digitalWrite(LED_PIN, LOW);
         lastReachedManualStop=currentBlindPosition;
-        Serial.println("Stopped in manual mode at: " + getPaddedBin(currentBlindPosition) + " bitString: " + getPaddedBin(currentBitString));
+        debugMessage("Stopped in manual mode at: " + getPaddedBin(currentBlindPosition) + " bitString: " + getPaddedBin(currentBitString));
       } else if (lastReachedManualStop!=currentBlindPosition){
-        Serial.println("Requested position not reached, but  blind not moving, possible malfunction");
+        debugMessage("Requested position not reached, but  blind not moving, possible malfunction");
         digitalWrite(LED_PIN, HIGH);
       }
       stopBlind(currentBitString);
     }
   } else {
-    Serial.println("ERROR, unknown mode: " + String(currentMode));
+    debugMessage("ERROR, unknown mode: " + String(currentMode));
     digitalWrite(LED_PIN, HIGH);
     delay(2000);
   }
