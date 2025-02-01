@@ -164,11 +164,11 @@ One command per line, max 32 chars long. the parser is pretty crude, pls stick t
 
 ## Unreachable stops
 
-The control roller pinstripe 8 signals encode 40 unique stop codes, each with three raised bits (i.e. 0b11001000m, 0b00110010). This allows to move from any stop to any other applying the destination code bit string. 
+The control roller pinstripe 8 signals encode 40 unique bit strings, each with three raised bits (i.e. 0b11001000, 0b00110010). This allows to move from any stop to any other applying the destination code bit string to stop selection pins. 
 
-At least, this is how the control roller would work hadn't its original designers decided to leave the rightmost pin unwired, resulting in only the 7 most significant bit signals being actually used to encode stops. 
+At least, this is how the control roller would work hadn't its original designers decided to leave the rightmost pin unwired.
 
-As a result, 5 out of 40 stops are encoded by only 2 pins and only work when selected starting from the 10 stops right behind them. 
+As a result, 5 out of 40 stops are encoded by only wired 2 pins and only work when selected starting from the 13 stops right behind them. 
 the matrix below highlights misencoded stops and the stops that would be wrongly displayed when their code is used, i.e. 
 
 - The blind displays stop **2** (code **0b1000110**)
@@ -176,10 +176,12 @@ the matrix below highlights misencoded stops and the stops that would be wrongly
 - The blind spins until stop **6**, (code **0b1100001**)
 - The bitwise "(input bit string) **AND NOT** (roller bit string)" of stops **21** and **6** codes is 0 -> the relais coil is not powered
 - The blind stopped on stop **6** before reaching **21** and would halt on 26,27,30 and 37 due to the same reason
+- (**Note:** code **0b1100000** correctly drives the blind to stop **21** starting form stops 7-20)
+
 
 ![Overlapping stop codes table](./stopsOverlaps.png)
 
-This behavior **did not** affect blinds during service as the 5 impacted stops were blank, I decided to leave it unchanged as an interesting quirk of the original design, you might want to fix it if you plan to display anything on stops 21-25 :-D 
+This behavior **did not** affect actual service on Roma Metro **A** as the 5 impacted stops were blank, I decided to leave it unchanged as an interesting quirk of the original design, you might want to fix it if you plan to display anything on stops 21-25 :-D 
 
 
 ## Troubleshooting
@@ -193,10 +195,7 @@ This behavior **did not** affect blinds during service as the 5 impacted stops w
 **A:** It is. any help much appreciated! ;-)
 
 ## Todo
-- tons of stuff still to be done
-
-
-
-
-
-various doc fixes
+- EEPROM saved configuration
+- Button commands
+- Readme completion
+- Circuit board layout completion
