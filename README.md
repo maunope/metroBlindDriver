@@ -168,7 +168,7 @@ the matrix below highlights misencoded stops and the stops that would be wrongly
 - The bitwise "(input bit string) **AND NOT** (roller bit string)" of stops **21** and **6** codes is 0 -> the relais coil is not powered
 - The blind stopped on stop **6** before reaching **21** and would halt on 26,27,30 and 37 due to the same reason
 
-![Overlapping stop codes talbe](./stopOverlaps.png)
+![Overlapping stop codes table](./stopsOverlaps.png)
 
 This behavior *did not* affect blinds during service as the 5 impacted stops were blank, I decided to leave it unchanged as an interesting quirk of the original design, you might want to fix it if you plan to display anything on stops 21-25 :-D 
 
