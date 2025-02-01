@@ -8,7 +8,7 @@ This is still a prototype, the circuit design was built and tested on a perfboar
 
 ![Actotral MA100 vintage photo](./ma100.jpg)
 
-Arduino based driver board to drive Acotral MA100 electric locootives front and side stops blinds.
+Arduino based drive board to control Acotral MA100 electric locootives front and side stops blinds.
 
 Acotral MA100s were first issued to Rome's **"A"** metro line were they were in service between 1980 and 2005, before being overhauled/modified and reassigned to Roma Lido 
 line until their decommissioning in 2018. 
@@ -86,7 +86,11 @@ The original control board has 7 control pins, 2 relais coil pins and 2 motor po
 
 the control roller common pin is not wired to the relais coil, their pins are to be jumpered to run the blind control at 48V using its original relais.
 
-## 220/5V modification
+**Full circuit diagram of original design coming**
+
+
+
+## 220V AC/5V DC modification
 
 The original blind wiring can be easily modificed to accept standard household 220V AC power and 5V DC signals, 
 
@@ -96,23 +100,22 @@ The original blind wiring can be easily modificed to accept standard household 2
 
 **220V AC motor wiring** 
 
-Wire the motor as shown in the picture below to drive it with 220V AC power, the plastic motor cap on most (all?) blinds have diagrams explaining how to wire motor coils in series/parallel
+Wire the motor as shown in the picture below to drive it with 220V AC power,  plastic motor caps on most (all?) blinds have diagrams explaining how to wire coils in series/parallel
 ![220V motor wiring detail](./220VWiring.png)
 
 **5V DC external relais wiring**
 
-To bypass the 48V  coil and use an external relays, clip the motor **N** wire and solder it to the top left pin on the DIN connector, if in doubt, use the only pin trace with no wires attached. 
+To bypass the 48V coil and use an external relais, clip the motor **N** wire from the connector board trace (board end, not motor end!) and solder it to the top left pin on the DIN connector, if in doubt, use the only pin trace with no wires attached. 
 
-Replacing the original 48V relais with a 5V or 12V one isn't sufficient, as the could has a 4kohm resistor wired in series, plus, compatible relais are out of production, hard to source and quite expensive. 
+Replacing the original 48V relais with a 5V or 12V one isn't sufficient, as the coil has a 4kohm resistor wired in series, plus, compatible relais are out of production, hard to source and quite expensive. 
 
-I wanted to preserve the original circuitry as much as possible, but definitely didn't want to faff with 48V signals; I figures since I had already wired the motor for 220V AC another small modification wouldn't matter much, and moving a wire to a diffeent pin seemed way less invasive than replacing a relais and a big *ass resitor.
+I wanted to preserve the original circuitry as much as possible, but definitely didn't want to faff with 48V signals.
+I figured since I had already wired the motor for 220V AC another small modification wouldn't matter much, and moving a wire to a diffeent pin seemed way less invasive than replacing a relais and a big *ss resitor.
 You might want to do things differently here, the circuit is easy enough to work with, these are just my2c :-) 
 
 **AC power traces picture coming**
 
 ## How to install and adjust
-
-
 
 **First things first, let's not fry stuff**
 
@@ -205,3 +208,4 @@ This behavior **did not** affect blinds during service as the 5 impacted stops w
 
 
 
+various doc fixes
