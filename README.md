@@ -30,10 +30,44 @@ The board design in this project runs 5V DC control signals and 220V power, it r
 
 ## Main features   
 - Runs through stops using the blidn's internal motor
-- Allows manual stop selection or programmed sequence mode
+- Allows manual stop selection or programmed stops sequence mode
 - Allows to save configurations to the Arduino EEprom
 - Implements several controls prevent damage/overheating in case of malfunctions
 
+
+## Manual vs. Program mode
+
+(TODO some features still to be implemented)
+
+In **manual mode** (default) stops are selected thorugh serial port commands, or single button presses. The board led is lit during Manual mode. 
+
+**Program mode** automatically loops a sequence of stops, one step every hour by default. the program will be resumed from the last reached stop in case of power OFF/ON, hourly step timer will be reset. The board led is off during Program mode.
+
+To switch between modes, either use serial commands or press the board button for **3 seconds**. 
+
+
+## Dependencies
+
+
+- [Regexp](https://github.com/nickgammon/Regexp)
+- [Rocket Scream Low Power](https://github.com/rocketscream/Low-Power)
+
+
+## Circuit Board
+
+
+**WORK IN PROGRESS** check the schematic in this repo, I've built and tested it on perfboard, board design might not be 100% correct, and definitely the layout could 
+use some improvement.
+
+
+
+**How to read led signals**
+
+
+Either for good or bad news, green led will flash. red will stay on when general enable switch is on
+
+
+(WIP)
 
 ## Original electro mechanical control logic 
 
@@ -76,32 +110,8 @@ You might want to do things differently here, the circuit is easy enough to work
 
 **AC power traces picture coming**
 
-
-## Dependencies
-
-
-- [Regexp](https://github.com/nickgammon/Regexp)
-- [Rocket Scream Low Power](https://github.com/rocketscream/Low-Power)
-
-
-## Circuit Board
-
-
-**WORK IN PROGRESS** check the schematic in this repo, I've built and tested it on perfboard, board design might not be 100% correct, and definitely the layout could 
-use some improvement.
-
-
-
-**How to read led signals**
-
-
-Either for good or bad news, green led will flash. red will stay on when general enable switch is on
-
-
-(WIP)
-
-
 ## How to install and adjust
+
 
 
 **First things first, let's not fry stuff**
@@ -142,11 +152,16 @@ One command per line, max 32 chars long. the parser is pretty crude, pls stick t
 
 **Available commands**:
 
-- **<<BOOTTIMESTAMP** prints the curent boot timestamp
-
-- **<<COMPILEDATETIME** print the sketch build timestamp
-(WIP)
-
+- **>>GO[0-9][0-9]** select stop by zero padded two digits number, 1-40 (only works in manual mode)
+- **>>(stop name)** (i.e. >>ANANGNINA, >>CINECITTA) select stop by name (only works in manual mode)
+- **>>STOP** halt the motor
+- **>>RUN** continuously run the motor 
+- **>>PROGRAM** switch to Program mode
+- **>>MANUAL** switch to Manual mode (default)
+- **>>PROGRAMSTOPS[0-9][0-9][\,0,9]?** write program mode stops sequence (TODO)
+- **>>RESETDEFAULTS** reset default configuration (TODO)
+- **>>EEPROMDATA** read current conf from eeprom 
+- **<<EEPROMDATA** write current conf to eeprom
 
 ## Build flags
 
@@ -170,7 +185,7 @@ the matrix below highlights misencoded stops and the stops that would be wrongly
 
 ![Overlapping stop codes table](./stopsOverlaps.png)
 
-This behavior *did not* affect blinds during service as the 5 impacted stops were blank, I decided to leave it unchanged as an interesting quirk of the original design, you might want to fix it if you plan to display anything on stops 21-25 :-D 
+This behavior **did not** affect blinds during service as the 5 impacted stops were blank, I decided to leave it unchanged as an interesting quirk of the original design, you might want to fix it if you plan to display anything on stops 21-25 :-D 
 
 
 ## Troubleshooting
