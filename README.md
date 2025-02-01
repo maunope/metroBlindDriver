@@ -1,5 +1,3 @@
-
-
 # Disclaimer
 This is still a prototype, the circuit design was built and tested on a perfboard, the kicad board design was never tested.  use at your risk and plz **don't  come whining if you damage stuff or set your house on fire.**
 
@@ -8,7 +6,7 @@ This is still a prototype, the circuit design was built and tested on a perfboar
 
 ![Actotral MA100 vintage photo](./ma100.jpg)
 
-Arduino based drive board to control Acotral MA100 electric locootives front and side stops blinds.
+Arduino based driver board to control Acotral MA100 electric locootives front and side stops blinds.
 
 Acotral MA100s were first issued to Rome's **"A"** metro line were they were in service between 1980 and 2005, before being overhauled/modified and reassigned to Roma Lido 
 line until their decommissioning in 2018. 
@@ -119,31 +117,24 @@ You might want to do things differently here, the circuit is easy enough to work
 
 **First things first, let's not fry stuff**
 
-- Check your blind motor wiring, the motor requires rewiring to run at 220V
-- Solder the motor N wire to pin #XX
-- Wire output pins 1 to 7
-
-(WIP)
-
-- Power the board.
+- Check wirings and tensions
+- See 220V AC/5V DC wiring diagrams above
+- Wire the DIN connector pins, be sure not to short circuit anything
+- Power the board and the motor **L** wire
  **No smoke? good.**
 
+By Default the controller will wait for commands in manual mode with the board led **ON**
 
+- Press the board button briefly, the blind should roll one stop forward
+- (Optional) press the board button for 3 seconds to switch to Program mode
 
-By Default the controller will wait for commands in manual mode
-
-
-## Enabling motor movement
-
-(WIP)
 
 ## Push buttons commands
 
-(WIP)
+- **Brief press:** move one stop forward
+- **3 seconds press:** switch between Manual and Program mode
 
 ## Serial port commands
-
-
 
 Commands format: **(<<|>>)[A-Z]{1,10}[a-z,A-Z,0-9]{1,20}**
 
