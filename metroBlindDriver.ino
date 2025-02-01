@@ -77,7 +77,9 @@ const int LEPANTO = 37;
 const int OTTAVIANO = 39;
 const int RUN = 41;
 
-const int MAX_CONTINUOS_RUN_SECS = 3;
+//10 seconds are approx. 2.5 full revolutions
+const int MAX_CONTINUOS_RUN_SECS = 10;
+
 const int DEFAULT_MODE=MANUAL_MODE;
 
 //seconds between each autonomous blind step
@@ -138,6 +140,17 @@ String getPaddedBin(byte bitString) {
 }
 
 
+//returns true if a given bitString exists on the control signals roller
+bool positionExists(byte bitString)
+{
+  int length= sizeof(COMMANDS) / sizeof(COMMANDS[0]);
+  for (int i=0;i<length;i++){
+    if (COMMANDS[i]==bitString){
+      return true;
+      }
+   }
+   return false;
+}
 
 
 //outputs a bitString to blind control signal pins and saves it as the current one
@@ -384,6 +397,9 @@ void loop() {
     parseSerialCommands(command, signals,programModeStatus,manualModeStatus);
   }
 
+  //current blind position, unknown until read from the roller
+  byte currentBlindPosition=0;
+
   ///
   /// Program mode:
   /// - Check what the next step is
@@ -405,7 +421,7 @@ void loop() {
         //not running, maybe requered stop was received
         if (digitalRead(RUNNING_PIN) == LOW) {
           setMotionEnabled(false, signals);
-          byte currentBlindPosition = readBlindPosition(signals);
+          currentBlindPosition = readBlindPosition(signals);
           //requested stop reached
           if (currentBlindPosition == signals.bitString) {
             //advance one step and handle rollover to program start
@@ -432,7 +448,7 @@ void loop() {
     setStopSelector(signals.bitString, signals);
     if (digitalRead(RUNNING_PIN) == LOW) {
       setMotionEnabled(false,signals);
-      byte currentBlindPosition = readBlindPosition(signals);
+      currentBlindPosition = readBlindPosition(signals);
       //requested stop reached
       if (currentBlindPosition == signals.bitString) {
         manualModeStatus.lastReachedManualStop=currentBlindPosition;
@@ -449,12 +465,20 @@ void loop() {
     delay(2000);
   }
 
-  //track how long we've been moving the roller
-  movementStartedMillis=digitalRead(RUNNING_PIN)?0:(movementStartedMillis==0)?millis():movementStartedMillis;
+  //If we have stopped in some non existent place, let the user know
+  if (!positionExists(currentBlindPosition) && digitalRead(RUNNING_PIN)==LOW && currentBlindPosition>0){
+    debugMessage("Blind not moving, but detected a non existant roller contacts status "+getPaddedBin(currentBlindPosition)+" possible malfunction");
+    blinkFeedbackLed(300, 100, 5);
+  }
+  
+  //track how long we've been moving the roller, protect from infinites loops
+  movementStartedMillis=(digitalRead(RUNNING_PIN)==LOW?0:((movementStartedMillis==0)?millis():movementStartedMillis));
   //give and error message and reset in case we've exceeded the maximum allowed uninterrupted run time
-  if ((millis()-movementStartedMillis)/1000>MAX_CONTINUOS_RUN_SECS){
-    debugMessage("Maximum continuous run exceeded, "+String((millis()-movementStartedMillis)/1000)+" seconds, max allowed: "+String(MAX_CONTINUOS_RUN_SECS));
-    blinkFeedbackLed(100, 100, 20);
+  if ((millis()-movementStartedMillis)/1000>MAX_CONTINUOS_RUN_SECS && movementStartedMillis>0){
+    debugMessage("Maximum continuous run exceeded, "+String((millis()-movementStartedMillis)/1000)+" seconds, max allowed: "+String(MAX_CONTINUOS_RUN_SECS)+" pausing for 30seconds and rebooting");
+    setMotionEnabled(false,signals);
+    stopBlind(signals);
+    blinkFeedbackLed(100, 100, 20);    
     delay(30000);
     asm volatile("  jmp 0");
   }

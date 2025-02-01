@@ -6,24 +6,57 @@ This is still a prototype, the circuit design was built and tested on a perfboar
 
 # Metro Blinds Driver
 
+![Actotral MA100 vintage photo](./ma100.jpg
 
-Arduino based driver board for Rome Metropolitana A front and side blinds
+Arduino based driver board to drive Acotral MA100 electric locootives front and side stops blinds.
+
+Acotral MA100s were first issued to Rome's **"A"** metro line were they were in service between 1980 and 2005, before being overhauled/modified and reassigned to Roma Lido 
+line until their decommissioning in 2018. 
+
+[Trasporti di Roma](https://romaatac.altervista.org/mezzi-di-roma/ma-100/)
+[Wikipedia] (https://it.wikipedia.org/wiki/Elettromotrici_ACOTRAL_MA_100)
+
+Stops signaling blinds coming from wagons dismantling started circuilating among flip clocks collectors and have become a somewhat commong find on online markets
+
+![Actotral MA100 inside](./inside.png)
+![Actotral blind detail](./detail.png)
+
+Blinds are controlled through 7 bits string identifying stops and are powered at 110V AC (motor)/ 48V DC (control), this board emulates original locomotive control signals to control them and display stops.
+
+This board runs 5V DC control signals and 220V power, it requires minimal modifications to the original blinds wiring, it is fairly easy anyhow to adapt it to run 48V/110V to 100% preserve the integrity of original wiring.
+
 
 **Main features:**   
-- (WIP)
+- Runs through stops using the blidn's internal motor
+- Allows manual stop selection or programmed sequence mode
+- Allows to save configurations to the Arduino EEprom
+- Implements several controls prevent damage/overheating in case of malfunctions
 
 
-# Disclaimer
-This is still a prototype, the circuit design was built and tested on a perfboard, the kicad board design was never tested.  use at your risk and plz **don't  come whining if you damage your flip clock or set your house on fire.**
+## Original electro mechanical control logic 
 
+![Control roller deail](./controlRoller.png)
 
-# Metro Blinds Driver
+A punched roller is used to encode 40 unique blind position, when a string of bits is applied to the pinstripe the motor spins until the holes combination under the pinstripe matches powered pins, i.e.:
 
+- **0b00111000** bit string corresponding to Termini station is appled to the pinstripe, powering pins 4,5,6  from the left  (1st left pin is common)
+- **0b0011110** bit string on the control roller is under the pinstripe, current flows through pins 4,5,6, the motor spins
+- Next roller bit string is **0b0100110**  string on the control roller is under the pinstripe, current flows through pins 6, the motor keeps spinning
+- The roller bit string is now **0b11000111**, all 1s on the pinstripe match a 0 on the roller, no currnt flows, the motor **stops** and wil remain stil until a different bit string is selected.
 
-Arduino based driver board for Rome Metropolitana A front and side blinds
+The original control board has 7 control pins, 2 relais coil pins and 2 motor power pins, exposed through a DIN 41622 male connector on the side or back or back panel
 
-**Main features:**   
-- (WIP)
+![Din connector detail](./controlRoller.png)
+
+the control roller common pin is not wired to the relais coil, their pins are to be jumpered to run the blind control at 48V usign its original relais.
+
+## 220/5V modification
+
+The original blind wiring can be easily modificed to accept standard household 220V AC power and 5V DC signals, 
+
+**IMPORTANT**: don't use this board design with 48V signals to avoid damage and fire hazard!
+
+(WIP)
 
 ## Dependencies
 
