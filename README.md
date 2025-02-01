@@ -127,7 +127,7 @@ You might want to do things differently here, the circuit is easy enough to work
 
 
 
-By Default the controller will cycle through its default stops sequence
+By Default the controller will wait for commands in manual mode
 
 
 ## Enabling motor movement
