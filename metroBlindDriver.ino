@@ -13,25 +13,25 @@ const int PROGRAM_MODE = 1;
 struct Signals
 {
   //bit string currently set on output pins
-  byte bitString=0b00000000;
+  byte bitString = 0b00000000;
   //manual/program mode
-  int mode=-1;
+  int mode = -1;
   //motion enabled status
-  bool motionEnabled=false;
+  bool motionEnabled = false;
 };
 
 
 struct ProgramModeStatus
 {
-  int programPos=-1;
-  int lastReachedProgramPos=-1;
+  int programPos = -1;
+  int lastReachedProgramPos = -1;
   unsigned long lastMovementMillis = 0;
 };
 
 struct ManualModeStatus
 {
   //manual mode status variables
-  int lastReachedManualStop= -1;
+  int lastReachedManualStop = -1;
 };
 
 //8 bits strings corresponding to each Roma Metropolitana A blind position
@@ -40,25 +40,25 @@ struct ManualModeStatus
 //first (0000000) and last (1111111) strings are "set all pins LOW/HIGH" commands, which have no correspondance on the roller
 byte COMMANDS[] = {
   0b00000000,  // 00 (Stop the blind, wherever it is)
-  0b00110100,  // 01 Fuori servizio  
-  0b10001100,0b01001100,0b00101100,0b00011100,0b11000010,0b10100010,0b01100010,0b10010010,   //02-26 blank  space
-  0b01010010,0b00110010, 0b10001010,0b01001010,0b00101010,0b00011010,0b10000110,0b01000110,
-  0b00100110,0b00010110,0b00001110,0b11000000,0b10100000,0b01100000,0b10010000,0b01010000,
+  0b00110100,  // 01 Fuori servizio
+  0b10001100, 0b01001100, 0b00101100, 0b00011100, 0b11000010, 0b10100010, 0b01100010, 0b10010010, //02-26 blank  space
+  0b01010010, 0b00110010, 0b10001010, 0b01001010, 0b00101010, 0b00011010, 0b10000110, 0b01000110,
+  0b00100110, 0b00010110, 0b00001110, 0b11000000, 0b10100000, 0b01100000, 0b10010000, 0b01010000,
   0b11100000,
   0b11010000,  // 27 Anagnina
-  0b10110000, 
+  0b10110000,
   0b01110000,  // 29 Cinecittà
-  0b11001000, 
+  0b11001000,
   0b10101000,  // 31 Arco di Travertino
-  0b01101000, 
+  0b01101000,
   0b10011000,  // 33 San giovanni
-  0b01011000, 
+  0b01011000,
   0b00111000,  // 35 Termini
-  0b11000100, 
+  0b11000100,
   0b10100100,  // 37 Lepanto
-  0b01100100, 
+  0b01100100,
   0b10010100,  // 39 Ottaviano
-  0b01010100, 
+  0b01010100,
   0b11111111   // 41 (Run the blind, wherever it is)};
 };
 
@@ -80,12 +80,12 @@ const int RUN = 41;
 //10 seconds are approx. 2.5 full revolutions
 const int MAX_CONTINUOS_RUN_SECS = 10;
 
-const int DEFAULT_MODE=MANUAL_MODE;
+const int DEFAULT_MODE = MANUAL_MODE;
 
 //seconds between each autonomous blind step
 const int SECONDS_BETWEEN_STEPS = 2;
 
-const int SECONDS_PER_DAY=86400;
+const int SECONDS_PER_DAY = 86400;
 
 
 const int RUNNING_PIN = 0;  //Reads high when the blind is rotating
@@ -102,7 +102,7 @@ ProgramModeStatus programModeStatus;
 ManualModeStatus manualModeStatus;
 
 
-unsigned long movementStartedMillis=0;
+unsigned long movementStartedMillis = 0;
 
 //TODO read from eeprom
 int program[] = { 01, 27, 29, 31, 33, 35, 37, 39 };
@@ -143,20 +143,20 @@ String getPaddedBin(byte bitString) {
 //returns true if a given bitString exists on the control signals roller
 bool positionExists(byte bitString)
 {
-  int length= sizeof(COMMANDS) / sizeof(COMMANDS[0]);
-  for (int i=0;i<length;i++){
-    if (COMMANDS[i]==bitString){
+  int length = sizeof(COMMANDS) / sizeof(COMMANDS[0]);
+  for (int i = 0; i < length; i++) {
+    if (COMMANDS[i] == bitString) {
       return true;
-      }
-   }
-   return false;
+    }
+  }
+  return false;
 }
 
 
 //outputs a bitString to blind control signal pins and saves it as the current one
 //this method won't reset pins once the requested position is reached
 //this method doesn't check the existance of the requested newBitString
-void setStopSelector(byte newBitString,Signals& signals) {
+void setStopSelector(byte newBitString, Signals& signals) {
   //debugMessage(getPaddedBin(newBitString));
   //debugMessage(getPaddedBin(currentBitString));
   //note that hte least significant bit is never used, as there's no pin using it
@@ -202,7 +202,7 @@ byte readBlindPosition(Signals& signals) {
   bool savedMotionEnabled = signals.motionEnabled;
 
   //temporarily disbale motion, to ensure a consistent reading and avoid unwanted movement
-  setMotionEnabled(false,signals);
+  setMotionEnabled(false, signals);
 
   byte currentPosition = 0;
   stopBlind(signals);
@@ -219,13 +219,13 @@ byte readBlindPosition(Signals& signals) {
   }
 
   //reset previous state
-  setStopSelector(savedBitString,signals);
-  setMotionEnabled(savedMotionEnabled,signals);
+  setStopSelector(savedBitString, signals);
+  setMotionEnabled(savedMotionEnabled, signals);
   debugMessage("readBlindPosition returning:" + getPaddedBin(currentPosition));
   return currentPosition;
 }
 
-void parseSerialCommands(String command,Signals& signals,ProgramModeStatus& programModeStatus,ManualModeStatus& manualModeStatus) {
+void parseSerialCommands(String command, Signals& signals, ProgramModeStatus& programModeStatus, ManualModeStatus& manualModeStatus) {
   // match state object
   MatchState ms;
   ms.Target(command.c_str());
@@ -301,7 +301,7 @@ void parseSerialCommands(String command,Signals& signals,ProgramModeStatus& prog
 //gets the index of the position in the program next to the current one, i.e. blind is at 10th,
 // program is 1,3,5,7,9,11,13 4 is returned, as the first program position >10 is 11, fifth element.
 //sets output to  -1 on error, returns 0 (first position) as a default
-void moveProgramToClosestStop(ProgramModeStatus programModeStatus,Signals& signals) {
+void moveProgramToClosestStop(ProgramModeStatus& programModeStatus, Signals& signals) {
   byte currentPosition = readBlindPosition(signals);
   int commandsLength = sizeof(COMMANDS) / sizeof(COMMANDS[0]);
   int currentPositionIndex = -1;
@@ -326,12 +326,12 @@ void moveProgramToClosestStop(ProgramModeStatus programModeStatus,Signals& signa
     }
   }
   programModeStatus.programPos = 0;
-  debugMessage("moveProgramToClosestStop returning " + String(programModeStatus.programPos));
+  debugMessage("moveProgramToClosestStop returning (not found)" + String(programModeStatus.programPos));
 }
 
 //sets the current motion mode, either program or manual, stops motion if required,
 //this method resets program position to -1, recalculation is required
-void setMode(int newMode, Signals& signals,ProgramModeStatus& programModeStatus,ManualModeStatus& manualModeStatus) {
+void setMode(int newMode, Signals& signals, ProgramModeStatus& programModeStatus, ManualModeStatus& manualModeStatus) {
   if (signals.mode == newMode) {
     //nothing to do
     debugMessage("setMode nothing to do");
@@ -344,7 +344,7 @@ void setMode(int newMode, Signals& signals,ProgramModeStatus& programModeStatus,
   stopBlind(signals);
   if (newMode == MANUAL_MODE) {
     programModeStatus.programPos = -1;
-    manualModeStatus.lastReachedManualStop=readBlindPosition(signals);
+    manualModeStatus.lastReachedManualStop = readBlindPosition(signals);
     digitalWrite(FEEDBACK_LED_PIN, HIGH);
   } else if (newMode == PROGRAM_MODE) {
     //todo recover position
@@ -366,11 +366,11 @@ void setup() {
 
   //sets selector pins to 0 and disables movement
   stopBlind(signals);
-  setMotionEnabled(false,signals);
+  setMotionEnabled(false, signals);
 
   //set the current mode to default
-  setMode(DEFAULT_MODE, signals,programModeStatus,manualModeStatus);
-  
+  setMode(DEFAULT_MODE, signals, programModeStatus, manualModeStatus);
+
   //todo read conf from EEPROM
 }
 
@@ -379,7 +379,7 @@ void loop() {
 
   // self reset every week, just in case I f*cked up and some variable would
   // overflow left unchecked (i.e. millis)
-  if (millis()/1000 >= SECONDS_PER_DAY * 7) {
+  if (millis() / 1000 >= SECONDS_PER_DAY * 7) {
     asm volatile("  jmp 0");
   }
 
@@ -394,11 +394,11 @@ void loop() {
       command += c;
       i++;
     }
-    parseSerialCommands(command, signals,programModeStatus,manualModeStatus);
+    parseSerialCommands(command, signals, programModeStatus, manualModeStatus);
   }
 
   //current blind position, unknown until read from the roller
-  byte currentBlindPosition=0;
+  byte currentBlindPosition = 0;
 
   ///
   /// Program mode:
@@ -430,7 +430,7 @@ void loop() {
             programModeStatus.lastReachedProgramPos = programModeStatus.programPos > 0 ? programModeStatus.lastReachedProgramPos : -1;
           } else {
             debugMessage("Requested position not reached, but  blind not moving, possible malfunction");
-             blinkFeedbackLed(300, 50, 5);
+            blinkFeedbackLed(300, 50, 5);
           }
           debugMessage("Stopped at: " + getPaddedBin(currentBlindPosition) + " bitString: " + getPaddedBin(signals.bitString));
           stopBlind(signals);
@@ -444,16 +444,16 @@ void loop() {
       delay(2000);
     }
   } else if (signals.mode == MANUAL_MODE) {
-    setMotionEnabled(true,signals);
+    setMotionEnabled(true, signals);
     setStopSelector(signals.bitString, signals);
     if (digitalRead(RUNNING_PIN) == LOW) {
-      setMotionEnabled(false,signals);
+      setMotionEnabled(false, signals);
       currentBlindPosition = readBlindPosition(signals);
       //requested stop reached
       if (currentBlindPosition == signals.bitString) {
-        manualModeStatus.lastReachedManualStop=currentBlindPosition;
+        manualModeStatus.lastReachedManualStop = currentBlindPosition;
         debugMessage("Stopped in manual mode at: " + getPaddedBin(currentBlindPosition) + " bitString: " + getPaddedBin(signals.bitString));
-      } else if (manualModeStatus.lastReachedManualStop!=currentBlindPosition){
+      } else if (manualModeStatus.lastReachedManualStop != currentBlindPosition) {
         debugMessage("Requested position not reached, but  blind not moving, possible malfunction");
         blinkFeedbackLed(100, 100, 5);
       }
@@ -466,19 +466,19 @@ void loop() {
   }
 
   //If we have stopped in some non existent place, let the user know
-  if (!positionExists(currentBlindPosition) && digitalRead(RUNNING_PIN)==LOW && currentBlindPosition>0){
-    debugMessage("Blind not moving, but detected a non existant roller contacts status "+getPaddedBin(currentBlindPosition)+" possible malfunction");
+  if (!positionExists(currentBlindPosition) && digitalRead(RUNNING_PIN) == LOW && currentBlindPosition > 0) {
+    debugMessage("Blind not moving, but detected a non existant roller contacts status " + getPaddedBin(currentBlindPosition) + " possible malfunction");
     blinkFeedbackLed(300, 100, 5);
   }
-  
+
   //track how long we've been moving the roller, protect from infinites loops
-  movementStartedMillis=(digitalRead(RUNNING_PIN)==LOW?0:((movementStartedMillis==0)?millis():movementStartedMillis));
+  movementStartedMillis = (digitalRead(RUNNING_PIN) == LOW ? 0 : ((movementStartedMillis == 0) ? millis() : movementStartedMillis));
   //give and error message and reset in case we've exceeded the maximum allowed uninterrupted run time
-  if ((millis()-movementStartedMillis)/1000>MAX_CONTINUOS_RUN_SECS && movementStartedMillis>0){
-    debugMessage("Maximum continuous run exceeded, "+String((millis()-movementStartedMillis)/1000)+" seconds, max allowed: "+String(MAX_CONTINUOS_RUN_SECS)+" pausing for 30seconds and rebooting");
-    setMotionEnabled(false,signals);
+  if ((millis() - movementStartedMillis) / 1000 > MAX_CONTINUOS_RUN_SECS && movementStartedMillis > 0) {
+    debugMessage("Maximum continuous run exceeded, " + String((millis() - movementStartedMillis) / 1000) + " seconds, max allowed: " + String(MAX_CONTINUOS_RUN_SECS) + " pausing for 30seconds and rebooting");
+    setMotionEnabled(false, signals);
     stopBlind(signals);
-    blinkFeedbackLed(100, 100, 20);    
+    blinkFeedbackLed(100, 100, 20);
     delay(30000);
     asm volatile("  jmp 0");
   }

@@ -46,7 +46,7 @@ A punched roller is used to encode 40 unique blind position, when a string of bi
 
 The original control board has 7 control pins, 2 relais coil pins and 2 motor power pins, exposed through a DIN 41622 male connector on the side or back or back panel
 
-![Din connector detail](./controlRoller.png)
+![Din connector detail](./dinConnector.png)
 
 the control roller common pin is not wired to the relais coil, their pins are to be jumpered to run the blind control at 48V usign its original relais.
 
