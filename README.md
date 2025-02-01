@@ -6,7 +6,7 @@ This is still a prototype, the circuit design was built and tested on a perfboar
 
 # Metro Blinds Driver
 
-![Actotral MA100 vintage photo](./ma100.jpg
+![Actotral MA100 vintage photo](./ma100.jpg)
 
 Arduino based driver board to drive Acotral MA100 electric locootives front and side stops blinds.
 
