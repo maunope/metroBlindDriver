@@ -1,32 +1,23 @@
 
-#include <Arduino.h>
 //#include <LowPower.h>                //https://github.com/rocketscream/Low-Power
-#include <Regexp.h>  //https://github.com/nickgammon/Regexp
+#include <EEPROM.h>
 
 
 #define DEBUG_MODE
 
-//automatic program based movement or manual stop selection
-const int MANUAL_MODE = 0;
-const int PROGRAM_MODE = 1;
-
-struct Signals
-{
-  //bit string currently set on output pins
-  byte bitString = 0b00000000;
-  //manual/program mode
-  int mode = -1;
-  //motion enabled status
-  bool motionEnabled = false;
-};
-
-
 struct ProgramModeStatus
 {
+  //current program mode position index to be displayed
   int programPos = -1;
+  //last succesfully displayed destination
   int lastReachedProgramPos = -1;
+  //last recorded movement millis
   unsigned long lastMovementMillis = 0;
+  byte stops[40] = {};
+  byte stopsLength = 0;
+  int stepsSeconds = -1;
 };
+
 
 struct ManualModeStatus
 {
@@ -34,11 +25,58 @@ struct ManualModeStatus
   int lastReachedManualStop = -1;
 };
 
+struct Signals
+{
+  //bit string currently set on output pins
+  byte bitString = 0b00000000;
+  //manual/program mode
+  int mode = -1;
+  //motion enabled status,
+  bool motionEnabled = false;
+};
+
+struct EEpromData
+{
+  int mode = -1;
+  byte programStops[40];
+  byte programLength = 0;
+  int programStepsSeconds = -1;
+};
+
+
+
+//debug mode redirects stdout to the serial port, this avoids the need for strings buffering
+#ifdef DEBUG_MODE
+// Define a custom putchar function to redirect output to Serial
+int putCharToSerial(char c, FILE *stream) {
+  if (stream == stdout) { // Check if it's standard output
+    Serial.write(c);
+  }
+  return 0;
+}
+
+// Declare a FILE stream for stdout (no initializer here!)
+FILE customStdOut;
+//printf macro, together with putCharToSerial driver debug messages straight to the Serial port,
+//stores string in Program Memory and appends a new line to each log line automatically
+#define DEBUG_PRINTF(format, ...) printf_P(PSTR(format "\n"),##__VA_ARGS__);
+#endif
+
+#ifndef DEBUG_MODE
+#define DEBUG_PRINTF(format, ...) // Nothing 
+#endif
+
+//automatic program based movement or manual stop selection
+const int MANUAL_MODE = 0;
+const int PROGRAM_MODE = 1;
+
+
 //8 bits strings corresponding to each Roma Metropolitana A blind position
 //rightmost bit is not relevant as the corresponding pin on the blind bit strings roller is not connected
 //sorting mirrors the punch hole roller's, first element selection ("Fuori Servizio") is arbitrary
 //first (0000000) and last (1111111) strings are "set all pins LOW/HIGH" commands, which have no correspondance on the roller
-byte COMMANDS[] = {
+
+const byte COMMANDS[]  = {
   0b00000000,  // 00 (Stop the blind, wherever it is)
   0b00110100,  // 01 Fuori servizio
   0b10001100, 0b01001100, 0b00101100, 0b00011100, 0b11000010, 0b10100010, 0b01100010, 0b10010010, //02-26 blank  space
@@ -61,6 +99,8 @@ byte COMMANDS[] = {
   0b01010100,
   0b11111111   // 41 (Run the blind, wherever it is)};
 };
+//the blind has 40 stops, and this is going to change :-)
+const int COMMANDSLEN = 40;
 
 //map pins to bit string positions, 0 ot 6
 const int PIN_MAP[] = { 3, 4, 5, 6, 7, 8, 9 };
@@ -80,12 +120,13 @@ const int RUN = 41;
 //10 seconds are approx. 2.5 full revolutions
 const int MAX_CONTINUOS_RUN_SECS = 10;
 
+//start in manual mode by default, save eeprom conf to start program mode at startup
 const int DEFAULT_MODE = MANUAL_MODE;
 
 //seconds between each autonomous blind step
-const int SECONDS_BETWEEN_STEPS = 2;
+const int DEFAULT_SECONDS_BETWEEN_STEPS = 3600;
 
-const int SECONDS_PER_DAY = 86400;
+const long int SECONDS_PER_DAY = 86400;
 
 
 const int RUNNING_PIN = 0;  //Reads high when the blind is rotating
@@ -100,20 +141,54 @@ Signals signals;
 //status for program and manual mode, i.e. "reached stop X", "last movement recorded on Y"
 ProgramModeStatus programModeStatus;
 ManualModeStatus manualModeStatus;
-
-
 unsigned long movementStartedMillis = 0;
 
-//TODO read from eeprom
-int program[] = { 01, 27, 29, 31, 33, 35, 37, 39 };
+//this default program cycles stops from Anagnina to Fuori servizio
+const byte  DEFAULT_PROGRAM[40] = {27, 29, 31, 33, 35, 37, 39,  01};
+byte DEFAULT_PROGRAM_LENGTH = 8;
 
 
+EEpromData eepromData;
 
-//print a message to Serial port if in DEBUG_MODE
-void debugMessage(String message) {
-#ifdef DEBUG_MODE
-  Serial.println(message);
-#endif
+
+//writes current conf to eeprom, no validation
+int writeConfToEEprom(Signals signals, ProgramModeStatus programModeStatus)
+{
+  EEpromData eepromData;
+  eepromData.mode = signals.mode;
+  memcpy(eepromData.programStops, programModeStatus.stops, sizeof(programModeStatus.stops));
+  eepromData.programLength = programModeStatus.stopsLength;
+  eepromData.programStepsSeconds = programModeStatus.stepsSeconds;
+  EEPROM.put(0, eepromData);
+}
+
+//loads configuration from eeprom  (doesn't apply it though!), return 0 on success, -1 on faulty data
+int loadConfFromEEprom(EEpromData& eepromData)
+{
+  int exitStatus = 0;
+  EEPROM.get(0, eepromData);
+  if (eepromData.mode != MANUAL_MODE && eepromData.mode != PROGRAM_MODE) {
+    DEBUG_PRINTF("Corrupted EEProm data, invalid mode, reverting to default mode");
+    eepromData.mode = DEFAULT_MODE;
+    exitStatus = -1;
+  }
+  if (eepromData.programStepsSeconds < 0) {
+    DEBUG_PRINTF("Corrupted EEProm data, invalid program mode interval, reverting to default value");
+    eepromData.programStepsSeconds = DEFAULT_SECONDS_BETWEEN_STEPS;
+    exitStatus = -1;
+  }
+  if (eepromData.programLength > 40) {
+    DEBUG_PRINTF("Corrupted EEProm data, invalid program length, reverting to 0");
+    eepromData.programLength = 0;
+    exitStatus = -1;
+  }
+  for (int i = 0; i < eepromData.programLength; i++) {
+    if (eepromData.programStops[i] < 0 || eepromData.programStops[i] > 40) {
+      DEBUG_PRINTF("Corrupted EEProm data, invalid sto selection in program, reverting to blank program");
+      exitStatus = -1;
+    }
+  }
+  return exitStatus;
 }
 
 // blinks the feedback led alternating given on/off time, for the given number
@@ -129,22 +204,19 @@ void blinkFeedbackLed(int onMillis, int offMillis, int iterations) {
 }
 
 
-//returns the 8 digits padded BIN  representation of a byte
-String getPaddedBin(byte bitString) {
-
-  String binaryString = String(bitString, BIN);  // Convert to binary string
-
-  String padding = "00000000";
-  String paddedString = padding + binaryString;
-  return paddedString.substring(paddedString.length() - 8);
+//writes the 8 digits padded BIN  representation of a byte in a given 9bytes buffer and returns its pointer for your convenience :-)
+char* getPaddedBin(byte bitString, char buf[]) {
+  for (int i = 7; i >= 0; i--) {
+    buf[7 - i] = (bitString & (1 << i)) ? '1' : '0';
+  }
+  buf[8] = '\0';
+  return buf;
 }
-
 
 //returns true if a given bitString exists on the control signals roller
 bool positionExists(byte bitString)
 {
-  int length = sizeof(COMMANDS) / sizeof(COMMANDS[0]);
-  for (int i = 0; i < length; i++) {
+  for (int i = 0; i < COMMANDSLEN; i++) {
     if (COMMANDS[i] == bitString) {
       return true;
     }
@@ -157,15 +229,11 @@ bool positionExists(byte bitString)
 //this method won't reset pins once the requested position is reached
 //this method doesn't check the existance of the requested newBitString
 void setStopSelector(byte newBitString, Signals& signals) {
-  //debugMessage(getPaddedBin(newBitString));
-  //debugMessage(getPaddedBin(currentBitString));
   //note that hte least significant bit is never used, as there's no pin using it
   if (newBitString != signals.bitString) {
     for (int i = 7; i >= 1; i--) {
-      // debugMessage(((newBitString >> (i )) & 1) == 1 ? "1" : "0");
       digitalWrite(PIN_MAP[7 - i], ((newBitString >> (i)) & 1) == 1 ? HIGH : LOW);
     }
-
     signals.bitString = newBitString;
   }
 }
@@ -195,9 +263,9 @@ bool setMotionEnabled(bool enable, Signals& signals) {
 //this method doesn't check if the blind is rolling before stopping it
 //this method doesn't check if the returned position exists in the rolles
 //this method restores the pre-existing blind status (selected stop and enable status) before returning
-
 byte readBlindPosition(Signals& signals) {
 
+  char binBuf[9];
   byte savedBitString = signals.bitString;
   bool savedMotionEnabled = signals.motionEnabled;
 
@@ -217,84 +285,132 @@ byte readBlindPosition(Signals& signals) {
     digitalWrite(PIN_MAP[i], LOW);
     delay(5);
   }
-
   //reset previous state
   setStopSelector(savedBitString, signals);
   setMotionEnabled(savedMotionEnabled, signals);
-  debugMessage("readBlindPosition returning:" + getPaddedBin(currentPosition));
+  //DEBUG_PRINTF("readBlindPosition returning: %s", getPaddedBin(currentPosition, binBuf));
   return currentPosition;
 }
 
-void parseSerialCommands(String command, Signals& signals, ProgramModeStatus& programModeStatus, ManualModeStatus& manualModeStatus) {
-  // match state object
-  MatchState ms;
-  ms.Target(command.c_str());
-
-
-  if (ms.Match(">>GO[0-9][0-9]")) {
-    command.replace(">>GO", "");
-    int selectedStopIndex = command.toInt();
-    if (selectedStopIndex >= 0 and selectedStopIndex < sizeof(COMMANDS) / sizeof(COMMANDS[0])) {
+//parse incoming serial commands and applies requested changes
+void parseSerialCommands(char command[], Signals& signals, ProgramModeStatus& programModeStatus, ManualModeStatus& manualModeStatus) {
+  char binBuf[9];
+  if (strncmp(command, ">>GO", 4) == 0 && isdigit(command[4]) && isdigit(command[5]) && strlen(command) == 6) {
+    char digits[2] = " ";
+    digits[0] = command[4];
+    digits[1] = command[5];
+    int selectedStopIndex = atoi(digits);
+    if (selectedStopIndex >= 0 and selectedStopIndex < COMMANDSLEN) {
       setStopSelector(COMMANDS[selectedStopIndex], signals);
-      Serial.println("Selected stop #" + command);
+      Serial.println("Selected stop # ");
+      Serial.print(command);
     } else {
       Serial.println("Invalid stop index received");
     }
-  } else if (ms.Match(">>STOP")) {
+  } else if (strcmp(command, (">>STOP")) == 0) {
     stopBlind(signals);
     Serial.println("Blind stop command received");
-  } else if (ms.Match(">>RUN")) {
+  } else if (strcmp(command, (">>RUN")) == 0) {
     runBlind(signals);
     Serial.println("Blind run command received");
-  } else if (ms.Match(">>FUORISERVIZIO")) {
+  } else if (strcmp(command, (">>FUORISERVIZIO")) == 0) {
     setStopSelector(COMMANDS[FUORISERVIZIO], signals);
-    Serial.println("Selected Fuori Servizio stop");
-  } else if (ms.Match(">>ANAGNINA")) {
+  } else if (strcmp(command, (">>ANAGNINA")) == 0) {
     setStopSelector(COMMANDS[ANAGNINA], signals);
-    Serial.println("Selected Anagnina stop");
-  } else if (ms.Match(">>CINECITTA")) {
+  } else if (strcmp(command, (">>CINECITTA")) == 0) {
     setStopSelector(COMMANDS[CINECITTA], signals);
-    Serial.println("Selected Cinecittà stop");
-  } else if (ms.Match(">>ARCODITRAVERTINO")) {
+  } else if (strcmp(command, (">>ARCODITRAVERTINO")) == 0) {
     setStopSelector(COMMANDS[ARCODITRAVERTINO], signals);
-    Serial.println("Selected Arco di Travertino stop");
-  } else if (ms.Match(">>SANGIOVANNI")) {
+  } else if (strcmp(command, (">>SANGIOVANNI")) == 0) {
     setStopSelector(COMMANDS[SANGIOVANNI], signals);
-    Serial.println("Selected San Giovanni stop");
-  } else if (ms.Match(">>TERMINI")) {
+  } else if (strcmp(command, (">>TERMINI")) == 0) {
     setStopSelector(COMMANDS[TERMINI], signals);
-    Serial.println("Selected Termini stop");
-  } else if (ms.Match(">>LEPANTO")) {
+  } else if (strcmp(command, (">>LEPANTO")) == 0) {
     setStopSelector(COMMANDS[LEPANTO], signals);
-    Serial.println("Selected Lepanto stop");
-  } else if (ms.Match(">>OTTAVIANO")) {
+  } else if (strcmp(command, (">>OTTAVIANO")) == 0) {
     setStopSelector(COMMANDS[OTTAVIANO], signals);
-    Serial.println("Selected Ottaviano stop");
   }
-  else if (ms.Match(">>PROGRAMSTOPS[0-9][0-9][\,0,9]?")) {
-    Serial.println("Saved auto mode stops program");
-  } else if (ms.Match("<<PROGRAM")) {
-    Serial.println("TODO Print current auto mode stops program");
+  else if (strncmp(command, (">>PROGRAMSTEPSSECONDS"),21) == 0) {
+    char digits[4];
+    for (int i = 0; i < 4; i++) {
+      digits[i] = command[21 + i];
+    }
+    if (!isdigit(digits[0]) || !isdigit(digits[1]) || !isdigit(digits[2]) || !isdigit(digits[3]) ) {
+        Serial.println("Wrong format received, 0 padded 4 digits int required");
+        return;
+      }
+    programModeStatus.stepsSeconds=atoi(digits);
+    Serial.println("Program mode steps seconds set");
   }
-  else if (ms.Match(">>PROGRAM")) {
+  else if (strcmp(command, ("<<PROGRAMSTEPSSECONDS")) == 0) {
+    Serial.println(programModeStatus.stepsSeconds);
+  }
+  else if (strcmp(command, ">>DEFAULTPROGRAM") == 0) {
+    memcpy(programModeStatus.stops, DEFAULT_PROGRAM, sizeof(DEFAULT_PROGRAM));
+    programModeStatus.stopsLength = DEFAULT_PROGRAM_LENGTH;
+    //DEBUG_PRINTF("First 3 stops: memory %d %d %d %d ", programModeStatus.stops[0], programModeStatus.stops[1], programModeStatus.stops[2], programModeStatus.stopsLength );
+    Serial.println("Default auto mode stops program set, run  >>EEPROMDATA to persist");
+  }
+  else if (strncmp(command, ">>PROGRAMSTOPS", 14) == 0) {
+    //94 == 14 chars form >>PROGRAMSTOPS plus 80 for the max length of the program
+    byte newProgram[40];
+    int j = 0;
+    int programStop = -1;
+    //stop on a 00 position, or at the end of the input string, or at the end of the program array
+    for (int i = 14; i < strlen(command) && programStop != 0 && j<(sizeof(newProgram)/sizeof(newProgram[0])); i += 2) {
+      char digits[2] = " ";
+      digits[0] = command[i];
+      digits[1] = command[i + 1];
+      if (!isdigit(digits[0]) || !isdigit(digits[1])) {
+        Serial.println("Wrong format received, only up to 40 2 digits zero padded integers admitted");
+        return;
+      }
+      int programStop = atoi(digits);
+      DEBUG_PRINTF("Program stop digit received: %d", programStop);
+      if (programStop > 0) {
+        newProgram[j] = programStop;
+        j++;
+      }
+    }
+    memcpy(programModeStatus.stops, newProgram, sizeof(newProgram));
+    programModeStatus.stopsLength = j;
+    Serial.println("Custom auto mode stops program set, run  >>EEPROMDATA to persist");
+  }
+  else if (strcmp(command, "<<PROGRAM") == 0) {
+    Serial.println("Current program in ram:");
+    //DEBUG_PRINTF("First 3 stops: memory %d %d %d %d ", programModeStatus.stops[0], programModeStatus.stops[1], programModeStatus.stops[2], programModeStatus.stopsLength );
+    for (int i = 0; i < programModeStatus.stopsLength; i++) {
+      Serial.print(" ");
+      Serial.print(programModeStatus.stops[i]);
+    }
+    Serial.println(" ");
+  }
+  else if (strcmp(command, ">>PROGRAMMODE") == 0) {
     setMode(PROGRAM_MODE, signals, programModeStatus, manualModeStatus);
     Serial.println("Current auto mode stops program");
   }
-  else if (ms.Match(">>MANUAL")) {
+  else if (strcmp(command, ">>MANUALMODE") == 0) {
     setMode(MANUAL_MODE, signals, programModeStatus, manualModeStatus);
     Serial.println("Manual blind movement selected");
-  } else if (ms.Match(">>RESETDEFAULTS")) {
+  } else if (strcmp(command, ">>RESETDEFAULTS") == 0) {
     Serial.println("Loaded default configuration, run >>EEPROMDATA to persist");
-  } else if (ms.Match("<<POSITION")) {
-    Serial.println(getPaddedBin(readBlindPosition(signals)));
-  } else if (ms.Match("<<EEPROMDATA")) {
-    Serial.println("Current configuration stored in  EEPROM");
-  } else if (ms.Match(">>EEPROMDATA")) {
+  } else if (strcmp(command, "<<POSITION") == 0) {
+    Serial.println(getPaddedBin(readBlindPosition(signals), binBuf));
+  } else if (strcmp(command, "<<EEPROMDATA") == 0) {
+    EEpromData eepromData;
+    loadConfFromEEprom(eepromData);
+    Serial.println("Current configuration stored in  EEPROM:");
+    Serial.println("TODO");
+  } else if (strcmp(command, ">>EEPROMDATA") == 0) {
+    writeConfToEEprom(signals, programModeStatus);
     Serial.println("Saved current configuration to EEPROM");
-  } else if (ms.Match("<<COMPILEDATETIME")) {
-    // Serial.println("Software compiled on: " + getStandardTime(DateTime(F(__DATE__), F(__TIME__))).timestamp());
-  } else if (!command.equals("")) {
-    Serial.println("Unknown command: " + command);
+  } else if (strcmp(command, "<<COMPILEDATETIME") == 0) {
+    char buff[20];
+    sprintf(buff, "%s %s", __DATE__, __TIME__);
+    Serial.println(buff);
+  } else if (strcmp(command, "") != 0) {
+    Serial.println("Unknown command: ");
+    Serial.print(command);
   }
 }
 
@@ -302,31 +418,33 @@ void parseSerialCommands(String command, Signals& signals, ProgramModeStatus& pr
 // program is 1,3,5,7,9,11,13 4 is returned, as the first program position >10 is 11, fifth element.
 //sets output to  -1 on error, returns 0 (first position) as a default
 void moveProgramToClosestStop(ProgramModeStatus& programModeStatus, Signals& signals) {
+
+  char binBuf[9];
   byte currentPosition = readBlindPosition(signals);
-  int commandsLength = sizeof(COMMANDS) / sizeof(COMMANDS[0]);
+  char padByteStringBuf[9];
   int currentPositionIndex = -1;
-  for (int i = 0; i < commandsLength; i++) {
-    debugMessage("moveProgramToClosestStop (COMMANDS[i] =" + getPaddedBin(COMMANDS[i]) + " currentPosition=" + getPaddedBin(currentPosition));
+  for (int i = 0; i < COMMANDSLEN; i++) {
+    DEBUG_PRINTF("moveProgramToClosestStop COMMANDS[i]=%s currentPosition=%s", getPaddedBin(COMMANDS[i], binBuf), getPaddedBin(currentPosition, binBuf));
     if (COMMANDS[i] == currentPosition) {
       currentPositionIndex = i;
       break;
     }
   }
   if (currentPositionIndex == -1) {
-    debugMessage("moveProgramToClosestStop Error, non existent position detected, currentPosition=" + getPaddedBin(currentPosition) + " currentBitString=" + getPaddedBin(signals.bitString));
+    DEBUG_PRINTF("moveProgramToClosestStop Error, non existent position detected, currentPosition= %s currentBitString=%s", getPaddedBin(currentPosition, binBuf), getPaddedBin(signals.bitString, binBuf));
     programModeStatus.programPos = -1;
   }
-  int programLength = sizeof(program) / sizeof(program[0]);
-  for (int i = 0; i < programLength; i++) {
-    if (program[i] >= currentPositionIndex) {
+  for (int i = 0; i < programModeStatus.stopsLength; i++) {
+    DEBUG_PRINTF("%d %d",programModeStatus.stops[i],currentPositionIndex);
+    if (programModeStatus.stops[i] >= currentPositionIndex) {
       //identified the position in the program next to the current one
       programModeStatus.programPos = i;
-      debugMessage("moveProgramToClosestStop returning " + String(programModeStatus.programPos));
+      DEBUG_PRINTF("moveProgramToClosestStop returning %d", programModeStatus.programPos);
       return;
     }
   }
   programModeStatus.programPos = 0;
-  debugMessage("moveProgramToClosestStop returning (not found)" + String(programModeStatus.programPos));
+  DEBUG_PRINTF("moveProgramToClosestStop returning (not found) %d", programModeStatus.programPos);
 }
 
 //sets the current motion mode, either program or manual, stops motion if required,
@@ -334,11 +452,11 @@ void moveProgramToClosestStop(ProgramModeStatus& programModeStatus, Signals& sig
 void setMode(int newMode, Signals& signals, ProgramModeStatus& programModeStatus, ManualModeStatus& manualModeStatus) {
   if (signals.mode == newMode) {
     //nothing to do
-    debugMessage("setMode nothing to do");
+    DEBUG_PRINTF("setMode nothing to do");
     return;
   }
   if (newMode != MANUAL_MODE && newMode != PROGRAM_MODE) {
-    debugMessage("setMode: invalid mode requested, received " + String(newMode));
+    DEBUG_PRINTF("setMode: invalid mode requested, received %i", newMode);
   }
   signals.mode = newMode;
   stopBlind(signals);
@@ -353,12 +471,22 @@ void setMode(int newMode, Signals& signals, ProgramModeStatus& programModeStatus
   }
 }
 
+
 void setup() {
-  Serial.begin(9600);
+
+  Serial.begin(19200);
+
+#ifdef DEBUG_MODE
+  //if in debug mode, redirect stdout to serial
+  fdev_setup_stream(&customStdOut, putCharToSerial, NULL, _FDEV_SETUP_WRITE);
+  stdout = &customStdOut; // Redirect stdout to our stream
+#endif
+
   //7 pins controlling the blind
   for (int i = 0; i < 7; i++) {
     pinMode(PIN_MAP[i], OUTPUT);
   }
+
   pinMode(RUNNING_PIN, INPUT);
   pinMode(BUTTON_PIN, INPUT);
   pinMode(ENABLE_PIN, OUTPUT);
@@ -368,14 +496,22 @@ void setup() {
   stopBlind(signals);
   setMotionEnabled(false, signals);
 
-  //set the current mode to default
-  setMode(DEFAULT_MODE, signals, programModeStatus, manualModeStatus);
 
-  //todo read conf from EEPROM
+  EEpromData eepromBuf;
+  if (loadConfFromEEprom(eepromBuf) != 0) {
+    blinkFeedbackLed(50, 50, 50);
+  }
+  memcpy(programModeStatus.stops, eepromBuf.programStops, sizeof(eepromBuf.programStops));
+  programModeStatus.stopsLength = eepromBuf.programLength;
+  programModeStatus.stepsSeconds = eepromBuf.programStepsSeconds;
+  setMode(eepromBuf.mode, signals, programModeStatus, manualModeStatus);
+
+
 }
 
 void loop() {
-  delay(1000);
+  delay(500);
+  char binBuf[9];
 
   // self reset every week, just in case I f*cked up and some variable would
   // overflow left unchecked (i.e. millis)
@@ -384,16 +520,17 @@ void loop() {
   }
 
   if (Serial.available() > 0) {
-    String command = "";
+    char command[128];
     int i = 0;
-    while (Serial.available() > 0 && i < 64) {
+    while (Serial.available() > 0 && i < 127) {
       char c = Serial.read();
       if (c == '\n') {
         break;  // Break when newline character is received
       }
-      command += c;
+      command[i] = c;
       i++;
     }
+    command[i] = '\0';
     parseSerialCommands(command, signals, programModeStatus, manualModeStatus);
   }
 
@@ -411,13 +548,14 @@ void loop() {
     if (programModeStatus.programPos == -1) {
       //at boot we need to recover what the next position is
       moveProgramToClosestStop(programModeStatus, signals);
-      debugMessage("Recovering next program position: " + String(programModeStatus.programPos));
+      DEBUG_PRINTF("Recovering next program position: %d", programModeStatus.programPos);
     }
     if (programModeStatus.programPos >= 0 ) {
-      if (programModeStatus.lastReachedProgramPos  < programModeStatus.programPos && millis() - programModeStatus.lastMovementMillis > SECONDS_BETWEEN_STEPS * 1000) {
+      if (programModeStatus.lastReachedProgramPos  < programModeStatus.programPos &&  (millis() - programModeStatus.lastMovementMillis) > programModeStatus.stepsSeconds * 1000) {
+         
         setMotionEnabled(true, signals);
         //move to the desired position
-        setStopSelector(COMMANDS[program[programModeStatus.programPos]], signals);
+        setStopSelector(COMMANDS[programModeStatus.stops[programModeStatus.programPos]], signals);
         //not running, maybe requered stop was received
         if (digitalRead(RUNNING_PIN) == LOW) {
           setMotionEnabled(false, signals);
@@ -425,21 +563,21 @@ void loop() {
           //requested stop reached
           if (currentBlindPosition == signals.bitString) {
             //advance one step and handle rollover to program start
-            programModeStatus.lastReachedProgramPos = programModeStatus.programPos;
-            programModeStatus.programPos = programModeStatus.programPos == ((sizeof(program) / sizeof(program[0])) - 1) ? 0 : programModeStatus.programPos + 1;
+            programModeStatus.lastReachedProgramPos = programModeStatus.programPos;        
+            programModeStatus.programPos =  (programModeStatus.programPos == programModeStatus.stopsLength-1) ? 0 : programModeStatus.programPos + 1;
             programModeStatus.lastReachedProgramPos = programModeStatus.programPos > 0 ? programModeStatus.lastReachedProgramPos : -1;
           } else {
-            debugMessage("Requested position not reached, but  blind not moving, possible malfunction");
+            DEBUG_PRINTF("Requested position not reached, but blind not moving, possible malfunction (selected a stop between 21 and 25 maybe? checkk \"Unreachable Stops\" in deocumentation for details)");
             blinkFeedbackLed(300, 50, 5);
           }
-          debugMessage("Stopped at: " + getPaddedBin(currentBlindPosition) + " bitString: " + getPaddedBin(signals.bitString));
+          DEBUG_PRINTF("Stopped at: %s bitString: %s",  getPaddedBin(currentBlindPosition, binBuf), getPaddedBin(signals.bitString, binBuf));
           stopBlind(signals);
           programModeStatus.lastMovementMillis = millis();
         }
       }
     }
     else {
-      debugMessage("ERROR, could not recover program position");
+      DEBUG_PRINTF("ERROR, could not recover program position");
       blinkFeedbackLed(300, 50, 2);
       delay(2000);
     }
@@ -452,22 +590,23 @@ void loop() {
       //requested stop reached
       if (currentBlindPosition == signals.bitString) {
         manualModeStatus.lastReachedManualStop = currentBlindPosition;
-        debugMessage("Stopped in manual mode at: " + getPaddedBin(currentBlindPosition) + " bitString: " + getPaddedBin(signals.bitString));
+        DEBUG_PRINTF("Stopped in manual mode at: %s, bitString: %s)", getPaddedBin(currentBlindPosition, binBuf), getPaddedBin(signals.bitString, binBuf));
       } else if (manualModeStatus.lastReachedManualStop != currentBlindPosition) {
-        debugMessage("Requested position not reached, but  blind not moving, possible malfunction");
-        blinkFeedbackLed(100, 100, 5);
+        DEBUG_PRINTF("Requested position not reached, but  blind not moving, possible malfunction (selected a stop between 21 and 25 maybe? check \"Unreachable Stops\" in deocumentation for details)");
+        blinkFeedbackLed(300, 50, 5);
+
       }
       stopBlind(signals);
     }
   } else {
-    debugMessage("ERROR, unknown mode: " + String(signals.mode));
+    DEBUG_PRINTF("ERROR, unknown mode: %d", signals.mode);
     blinkFeedbackLed(100, 100, 10);
     delay(2000);
   }
 
   //If we have stopped in some non existent place, let the user know
   if (!positionExists(currentBlindPosition) && digitalRead(RUNNING_PIN) == LOW && currentBlindPosition > 0) {
-    debugMessage("Blind not moving, but detected a non existant roller contacts status " + getPaddedBin(currentBlindPosition) + " possible malfunction");
+    DEBUG_PRINTF("Blind not moving, but detected a non existant roller contacts status %s, possible malfunction", getPaddedBin(currentBlindPosition, binBuf));
     blinkFeedbackLed(300, 100, 5);
   }
 
@@ -475,7 +614,7 @@ void loop() {
   movementStartedMillis = (digitalRead(RUNNING_PIN) == LOW ? 0 : ((movementStartedMillis == 0) ? millis() : movementStartedMillis));
   //give and error message and reset in case we've exceeded the maximum allowed uninterrupted run time
   if ((millis() - movementStartedMillis) / 1000 > MAX_CONTINUOS_RUN_SECS && movementStartedMillis > 0) {
-    debugMessage("Maximum continuous run exceeded, " + String((millis() - movementStartedMillis) / 1000) + " seconds, max allowed: " + String(MAX_CONTINUOS_RUN_SECS) + " pausing for 30seconds and rebooting");
+    DEBUG_PRINTF("Maximum continuous run exceeded, %d seconds, max allowed: %d pausing for 30seconds and rebooting", ((millis() - movementStartedMillis) / 1000), MAX_CONTINUOS_RUN_SECS);
     setMotionEnabled(false, signals);
     stopBlind(signals);
     blinkFeedbackLed(100, 100, 20);
