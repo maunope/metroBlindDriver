@@ -1,7 +1,8 @@
 
 //#include <LowPower.h>                //https://github.com/rocketscream/Low-Power
 #include <EEPROM.h>
-
+#include <avr/sleep.h>
+#include <avr/power.h>
 
 #define DEBUG_MODE
 
@@ -100,7 +101,7 @@ const byte COMMANDS[]  = {
   0b11111111   // 41 (Run the blind, wherever it is)};
 };
 //the blind has 40 stops, and this is going to change :-)
-const int COMMANDSLEN = 40;
+const int COMMANDSLEN = 41;
 
 //map pins to bit string positions, 0 ot 6
 const int PIN_MAP[] = { 3, 4, 5, 6, 7, 8, 9 };
@@ -130,7 +131,7 @@ const long int SECONDS_PER_DAY = 86400;
 
 
 const int RUNNING_PIN = 0;  //Reads high when the blind is rotating
-const int BUTTON_PIN = 1;
+const int PUSH_BUTTON_PIN = 1;
 const int ENABLE_PIN = 10;  //Set to HIGH to enable the output relais coild
 const int FEEDBACK_LED_PIN = 14;
 
@@ -143,13 +144,18 @@ ProgramModeStatus programModeStatus;
 ManualModeStatus manualModeStatus;
 unsigned long movementStartedMillis = 0;
 
+unsigned long lastCommandReceived = 0;
+
 //this default program cycles stops from Anagnina to Fuori servizio
 const byte  DEFAULT_PROGRAM[40] = {27, 29, 31, 33, 35, 37, 39,  01};
 byte DEFAULT_PROGRAM_LENGTH = 8;
 
+// how long the push button has been pressed
+unsigned long pushButtonPressedMillis = 0;
 
 EEpromData eepromData;
 
+bool forceMoveToNextProgramStop = false;
 
 //writes current conf to eeprom, no validation
 int writeConfToEEprom(Signals signals, ProgramModeStatus programModeStatus)
@@ -213,15 +219,16 @@ char* getPaddedBin(byte bitString, char buf[]) {
   return buf;
 }
 
-//returns true if a given bitString exists on the control signals roller
-bool positionExists(byte bitString)
+//returns its index in commands array if a given bitString exists on the control signals roller, or -1 if it doesnt
+int positionExists(byte bitString)
 {
+
   for (int i = 0; i < COMMANDSLEN; i++) {
     if (COMMANDS[i] == bitString) {
-      return true;
+      return i;
     }
   }
-  return false;
+  return -1;
 }
 
 
@@ -300,7 +307,8 @@ void parseSerialCommands(char command[], Signals& signals, ProgramModeStatus& pr
     digits[0] = command[4];
     digits[1] = command[5];
     int selectedStopIndex = atoi(digits);
-    if (selectedStopIndex >= 0 and selectedStopIndex < COMMANDSLEN) {
+    //skip 0 and COMMANDSLEN as they are STOP and RUN
+    if (selectedStopIndex > 0 and selectedStopIndex < COMMANDSLEN - 1) {
       setStopSelector(COMMANDS[selectedStopIndex], signals);
       Serial.println("Selected stop # ");
       Serial.print(command);
@@ -330,16 +338,16 @@ void parseSerialCommands(char command[], Signals& signals, ProgramModeStatus& pr
   } else if (strcmp(command, (">>OTTAVIANO")) == 0) {
     setStopSelector(COMMANDS[OTTAVIANO], signals);
   }
-  else if (strncmp(command, (">>PROGRAMSTEPSSECONDS"),21) == 0) {
+  else if (strncmp(command, (">>PROGRAMSTEPSSECONDS"), 21) == 0) {
     char digits[4];
     for (int i = 0; i < 4; i++) {
       digits[i] = command[21 + i];
     }
     if (!isdigit(digits[0]) || !isdigit(digits[1]) || !isdigit(digits[2]) || !isdigit(digits[3]) ) {
-        Serial.println("Wrong format received, 0 padded 4 digits int required");
-        return;
-      }
-    programModeStatus.stepsSeconds=atoi(digits);
+      Serial.println("Wrong format received, 0 padded 4 digits int required");
+      return;
+    }
+    programModeStatus.stepsSeconds = atoi(digits);
     Serial.println("Program mode steps seconds set");
   }
   else if (strcmp(command, ("<<PROGRAMSTEPSSECONDS")) == 0) {
@@ -357,7 +365,7 @@ void parseSerialCommands(char command[], Signals& signals, ProgramModeStatus& pr
     int j = 0;
     int programStop = -1;
     //stop on a 00 position, or at the end of the input string, or at the end of the program array
-    for (int i = 14; i < strlen(command) && programStop != 0 && j<(sizeof(newProgram)/sizeof(newProgram[0])); i += 2) {
+    for (int i = 14; i < strlen(command) && programStop != 0 && j < (sizeof(newProgram) / sizeof(newProgram[0])); i += 2) {
       char digits[2] = " ";
       digits[0] = command[i];
       digits[1] = command[i + 1];
@@ -435,7 +443,7 @@ void moveProgramToClosestStop(ProgramModeStatus& programModeStatus, Signals& sig
     programModeStatus.programPos = -1;
   }
   for (int i = 0; i < programModeStatus.stopsLength; i++) {
-    DEBUG_PRINTF("%d %d",programModeStatus.stops[i],currentPositionIndex);
+    DEBUG_PRINTF("%d %d", programModeStatus.stops[i], currentPositionIndex);
     if (programModeStatus.stops[i] >= currentPositionIndex) {
       //identified the position in the program next to the current one
       programModeStatus.programPos = i;
@@ -488,7 +496,7 @@ void setup() {
   }
 
   pinMode(RUNNING_PIN, INPUT);
-  pinMode(BUTTON_PIN, INPUT);
+  pinMode(PUSH_BUTTON_PIN, INPUT);
   pinMode(ENABLE_PIN, OUTPUT);
   pinMode(FEEDBACK_LED_PIN, OUTPUT);
 
@@ -510,7 +518,7 @@ void setup() {
 }
 
 void loop() {
-  delay(500);
+  delay(50);
   char binBuf[9];
 
   // self reset every week, just in case I f*cked up and some variable would
@@ -532,6 +540,7 @@ void loop() {
     }
     command[i] = '\0';
     parseSerialCommands(command, signals, programModeStatus, manualModeStatus);
+    lastCommandReceived = millis();
   }
 
   //current blind position, unknown until read from the roller
@@ -551,8 +560,8 @@ void loop() {
       DEBUG_PRINTF("Recovering next program position: %d", programModeStatus.programPos);
     }
     if (programModeStatus.programPos >= 0 ) {
-      if (programModeStatus.lastReachedProgramPos  < programModeStatus.programPos &&  (millis() - programModeStatus.lastMovementMillis) > programModeStatus.stepsSeconds * 1000) {
-         
+      if (programModeStatus.lastReachedProgramPos  < programModeStatus.programPos &&  ((millis() - programModeStatus.lastMovementMillis) > programModeStatus.stepsSeconds * 1000) || forceMoveToNextProgramStop == true) {
+
         setMotionEnabled(true, signals);
         //move to the desired position
         setStopSelector(COMMANDS[programModeStatus.stops[programModeStatus.programPos]], signals);
@@ -563,8 +572,8 @@ void loop() {
           //requested stop reached
           if (currentBlindPosition == signals.bitString) {
             //advance one step and handle rollover to program start
-            programModeStatus.lastReachedProgramPos = programModeStatus.programPos;        
-            programModeStatus.programPos =  (programModeStatus.programPos == programModeStatus.stopsLength-1) ? 0 : programModeStatus.programPos + 1;
+            programModeStatus.lastReachedProgramPos = programModeStatus.programPos;
+            programModeStatus.programPos =  (programModeStatus.programPos == programModeStatus.stopsLength - 1) ? 0 : programModeStatus.programPos + 1;
             programModeStatus.lastReachedProgramPos = programModeStatus.programPos > 0 ? programModeStatus.lastReachedProgramPos : -1;
           } else {
             DEBUG_PRINTF("Requested position not reached, but blind not moving, possible malfunction (selected a stop between 21 and 25 maybe? checkk \"Unreachable Stops\" in deocumentation for details)");
@@ -604,8 +613,9 @@ void loop() {
     delay(2000);
   }
 
+  int currentPositionIndex = positionExists(currentBlindPosition);
   //If we have stopped in some non existent place, let the user know
-  if (!positionExists(currentBlindPosition) && digitalRead(RUNNING_PIN) == LOW && currentBlindPosition > 0) {
+  if (currentPositionIndex < 0 && digitalRead(RUNNING_PIN) == LOW && currentBlindPosition > 0) {
     DEBUG_PRINTF("Blind not moving, but detected a non existant roller contacts status %s, possible malfunction", getPaddedBin(currentBlindPosition, binBuf));
     blinkFeedbackLed(300, 100, 5);
   }
@@ -622,4 +632,72 @@ void loop() {
     asm volatile("  jmp 0");
   }
 
+  //this can be active for max 1 loop
+  forceMoveToNextProgramStop = false;
+
+  //two button press commands:
+  //3 seconds, switch mode
+  //brief, advance 1 step, in manual mode it's 1 stop jump, in program next stop in the program sequence
+  if (digitalRead(PUSH_BUTTON_PIN) == HIGH) {
+    if (pushButtonPressedMillis == 0) {
+      pushButtonPressedMillis = millis();
+    }
+    // long press
+    else if (millis() - pushButtonPressedMillis >= 3000) {
+      lastCommandReceived = millis();
+      // this totals to 1 second
+      blinkFeedbackLed(100, 100, 5);
+      if (signals.mode == PROGRAM_MODE) {
+        setMode(MANUAL_MODE, signals, programModeStatus, manualModeStatus);
+        DEBUG_PRINTF("Manual mode set through button press");
+      }
+      else {
+        setMode(PROGRAM_MODE, signals, programModeStatus, manualModeStatus);
+        DEBUG_PRINTF("Program mode set through button press");
+      }
+
+      delay(200);  //avoid bounces
+      pushButtonPressedMillis = 0;
+    }
+  }
+  // short press
+  else if (pushButtonPressedMillis > 0) {
+    pushButtonPressedMillis = 0;
+    lastCommandReceived = millis();
+    if (digitalRead(RUNNING_PIN) == LOW) {
+      blinkFeedbackLed(100, 0, 1);
+      if (signals.mode == PROGRAM_MODE) {
+        //this will force program mode to move one step forward on the next loop
+        forceMoveToNextProgramStop = true;
+        //int nextProgramStopIndex=positionExists(COMMANDS[programModeStatus.programPos]);
+        //if(nextProgramStopIndex>currentPositio
+        programModeStatus.programPos =  (programModeStatus.programPos == programModeStatus.stopsLength - 1) ? 0 : programModeStatus.programPos + 1;
+      }
+      else {
+        //if I get here, I can assume currentBlindPosition is loaded, if it doesn't exist due to some failure, led blinked
+        //currentBlindPosition = readBlindPosition(signals);
+        if (currentPositionIndex >= 0)
+        {
+          //first command is STOP, last is RUN, we want to skip both, hence <commandsLength-1 and cycle back to 1 instead of 0
+          int newPositionIndex = ((currentPositionIndex + 1) < COMMANDSLEN  ) ? currentPositionIndex + 1 : 1;
+
+          setStopSelector(COMMANDS[newPositionIndex], signals);
+
+          DEBUG_PRINTF("Manual movement command in manual mode received");
+        }
+        else {
+          DEBUG_PRINTF("Skipping manual movement command in manual mode as non existent position read");
+        }
+      }
+    }
+  }
+
+
+
+
+}
+
+ISR(TIMER1_COMPA_vect) {
+  // This is the interrupt service routine that wakes up the microcontroller
+  // Do nothing here; the mere act of the interrupt firing wakes up the CPU.
 }
