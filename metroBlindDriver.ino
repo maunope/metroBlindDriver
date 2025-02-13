@@ -1,10 +1,10 @@
 
-//#include <LowPower.h>                //https://github.com/rocketscream/Low-Power
+#include <LowPower.h>                //https://github.com/rocketscream/Low-Power
 #include <EEPROM.h>
-#include <avr/sleep.h>
-#include <avr/power.h>
 
-#define DEBUG_MODE
+
+
+//#define DEBUG_MODE
 
 struct ProgramModeStatus
 {
@@ -200,13 +200,14 @@ int loadConfFromEEprom(EEpromData& eepromData)
 // blinks the feedback led alternating given on/off time, for the given number
 // of times.
 void blinkFeedbackLed(int onMillis, int offMillis, int iterations) {
+  int previousState = digitalRead(FEEDBACK_LED_PIN);
   for (int i = 0; i < iterations; i++) {
     digitalWrite(FEEDBACK_LED_PIN, HIGH);
     delay(onMillis);
     digitalWrite(FEEDBACK_LED_PIN, LOW);
     delay(offMillis);
   }
-  digitalWrite(FEEDBACK_LED_PIN, LOW);
+  digitalWrite(FEEDBACK_LED_PIN, previousState);
 }
 
 
@@ -268,11 +269,12 @@ bool setMotionEnabled(bool enable, Signals& signals) {
 
 //reads the current blind position,disabling motion temporarily
 //this method doesn't check if the blind is rolling before stopping it
-//this method doesn't check if the returned position exists in the rolles
+//this method doesn't check if the returned position exists in the roller
 //this method restores the pre-existing blind status (selected stop and enable status) before returning
 byte readBlindPosition(Signals& signals) {
 
-  char binBuf[9];
+  char binBufA[9];
+  char binBufB[9];
   byte savedBitString = signals.bitString;
   bool savedMotionEnabled = signals.motionEnabled;
 
@@ -301,7 +303,8 @@ byte readBlindPosition(Signals& signals) {
 
 //parse incoming serial commands and applies requested changes
 void parseSerialCommands(char command[], Signals& signals, ProgramModeStatus& programModeStatus, ManualModeStatus& manualModeStatus) {
-  char binBuf[9];
+  char binBufA[9];
+  char binBufB[9];
   if (strncmp(command, ">>GO", 4) == 0 && isdigit(command[4]) && isdigit(command[5]) && strlen(command) == 6) {
     char digits[2] = " ";
     digits[0] = command[4];
@@ -310,7 +313,7 @@ void parseSerialCommands(char command[], Signals& signals, ProgramModeStatus& pr
     //skip 0 and COMMANDSLEN as they are STOP and RUN
     if (selectedStopIndex > 0 and selectedStopIndex < COMMANDSLEN - 1) {
       setStopSelector(COMMANDS[selectedStopIndex], signals);
-      Serial.println("Selected stop # ");
+      Serial.println(F("Selected stop # "));
       Serial.print(command);
     } else {
       Serial.println("Invalid stop index received");
@@ -344,11 +347,11 @@ void parseSerialCommands(char command[], Signals& signals, ProgramModeStatus& pr
       digits[i] = command[21 + i];
     }
     if (!isdigit(digits[0]) || !isdigit(digits[1]) || !isdigit(digits[2]) || !isdigit(digits[3]) ) {
-      Serial.println("Wrong format received, 0 padded 4 digits int required");
+      Serial.println(F("Wrong format received, 0 padded 4 digits int required"));
       return;
     }
     programModeStatus.stepsSeconds = atoi(digits);
-    Serial.println("Program mode steps seconds set");
+    Serial.println(F("Program mode steps seconds set"));
   }
   else if (strcmp(command, ("<<PROGRAMSTEPSSECONDS")) == 0) {
     Serial.println(programModeStatus.stepsSeconds);
@@ -357,7 +360,7 @@ void parseSerialCommands(char command[], Signals& signals, ProgramModeStatus& pr
     memcpy(programModeStatus.stops, DEFAULT_PROGRAM, sizeof(DEFAULT_PROGRAM));
     programModeStatus.stopsLength = DEFAULT_PROGRAM_LENGTH;
     //DEBUG_PRINTF("First 3 stops: memory %d %d %d %d ", programModeStatus.stops[0], programModeStatus.stops[1], programModeStatus.stops[2], programModeStatus.stopsLength );
-    Serial.println("Default auto mode stops program set, run  >>EEPROMDATA to persist");
+    Serial.println(F("Default auto mode stops program set, run  >>EEPROMDATA to persist"));
   }
   else if (strncmp(command, ">>PROGRAMSTOPS", 14) == 0) {
     //94 == 14 chars form >>PROGRAMSTOPS plus 80 for the max length of the program
@@ -370,7 +373,7 @@ void parseSerialCommands(char command[], Signals& signals, ProgramModeStatus& pr
       digits[0] = command[i];
       digits[1] = command[i + 1];
       if (!isdigit(digits[0]) || !isdigit(digits[1])) {
-        Serial.println("Wrong format received, only up to 40 2 digits zero padded integers admitted");
+        Serial.println(F("Wrong format received, only up to 40 2 digits zero padded integers admitted"));
         return;
       }
       int programStop = atoi(digits);
@@ -380,12 +383,27 @@ void parseSerialCommands(char command[], Signals& signals, ProgramModeStatus& pr
         j++;
       }
     }
+    //check that the sequence is unidirectional, it is possible to circle around last element once, i.e
+    // 35,37,39,01,03 is OK, sequence drops once as it circles back from last element
+    // 37,39,29,01,03 is KO, sequence reaches 39, then circles all the way to 29, then again all the way to 1
+    // non unidirectional sequences break recovery of the closest reached stop, plus they cause excessive flapping on the blind
+    bool smallerFound = false;
+    for (int i = 1; i < j; i++) {
+      if (newProgram[i] < newProgram[i - 1]) {
+        if (smallerFound == true) {
+          Serial.println(F("ERROR, stops sequence isn't unidirectional"));
+          return;
+        }
+        smallerFound = true;
+      }
+    }
+    //sequence is valid, proceed
     memcpy(programModeStatus.stops, newProgram, sizeof(newProgram));
     programModeStatus.stopsLength = j;
-    Serial.println("Custom auto mode stops program set, run  >>EEPROMDATA to persist");
+    Serial.println(F("Custom auto mode stops program set, run  >>EEPROMDATA to persist"));
   }
   else if (strcmp(command, "<<PROGRAM") == 0) {
-    Serial.println("Current program in ram:");
+    Serial.println(F("Current program in ram:"));
     //DEBUG_PRINTF("First 3 stops: memory %d %d %d %d ", programModeStatus.stops[0], programModeStatus.stops[1], programModeStatus.stops[2], programModeStatus.stopsLength );
     for (int i = 0; i < programModeStatus.stopsLength; i++) {
       Serial.print(" ");
@@ -395,7 +413,7 @@ void parseSerialCommands(char command[], Signals& signals, ProgramModeStatus& pr
   }
   else if (strcmp(command, ">>PROGRAMMODE") == 0) {
     setMode(PROGRAM_MODE, signals, programModeStatus, manualModeStatus);
-    Serial.println("Current auto mode stops program");
+    Serial.println(F("Current auto mode stops program"));
   }
   else if (strcmp(command, ">>MANUALMODE") == 0) {
     setMode(MANUAL_MODE, signals, programModeStatus, manualModeStatus);
@@ -403,21 +421,33 @@ void parseSerialCommands(char command[], Signals& signals, ProgramModeStatus& pr
   } else if (strcmp(command, ">>RESETDEFAULTS") == 0) {
     Serial.println("Loaded default configuration, run >>EEPROMDATA to persist");
   } else if (strcmp(command, "<<POSITION") == 0) {
-    Serial.println(getPaddedBin(readBlindPosition(signals), binBuf));
+    Serial.println(getPaddedBin(readBlindPosition(signals), binBufA));
   } else if (strcmp(command, "<<EEPROMDATA") == 0) {
     EEpromData eepromData;
     loadConfFromEEprom(eepromData);
-    Serial.println("Current configuration stored in  EEPROM:");
-    Serial.println("TODO");
+    Serial.println(F("Program stops in eeprom: "));
+    //DEBUG_PRINTF("First 3 stops: memory %d %d %d %d ", programModeStatus.stops[0], programModeStatus.stops[1], programModeStatus.stops[2], programModeStatus.stopsLength );
+    for (int i = 0; i < eepromData.programLength; i++) {
+      Serial.print(eepromData.programStops[i]);
+      Serial.print(" ");
+    }
+    Serial.println(" ");
+    Serial.println(F("Program Length,Program stesps seconds, mode  in eeprom: "));
+    Serial.print(eepromData.programLength);
+    Serial.print(" ");
+    Serial.print(eepromData.programStepsSeconds);
+    Serial.print(" ");
+    Serial.print(eepromData.mode);
+    Serial.println(" ");
   } else if (strcmp(command, ">>EEPROMDATA") == 0) {
     writeConfToEEprom(signals, programModeStatus);
-    Serial.println("Saved current configuration to EEPROM");
+    Serial.println(F("Saved current configuration to EEPROM"));
   } else if (strcmp(command, "<<COMPILEDATETIME") == 0) {
     char buff[20];
     sprintf(buff, "%s %s", __DATE__, __TIME__);
     Serial.println(buff);
   } else if (strcmp(command, "") != 0) {
-    Serial.println("Unknown command: ");
+    Serial.println(F("Unknown command: "));
     Serial.print(command);
   }
 }
@@ -427,30 +457,40 @@ void parseSerialCommands(char command[], Signals& signals, ProgramModeStatus& pr
 //sets output to  -1 on error, returns 0 (first position) as a default
 void moveProgramToClosestStop(ProgramModeStatus& programModeStatus, Signals& signals) {
 
-  char binBuf[9];
+  char binBufA[9];
+  char binBufB[9];
   byte currentPosition = readBlindPosition(signals);
-  char padByteStringBuf[9];
   int currentPositionIndex = -1;
   for (int i = 0; i < COMMANDSLEN; i++) {
-    DEBUG_PRINTF("moveProgramToClosestStop COMMANDS[i]=%s currentPosition=%s", getPaddedBin(COMMANDS[i], binBuf), getPaddedBin(currentPosition, binBuf));
+    DEBUG_PRINTF("moveProgramToClosestStop COMMANDS[i]=%s currentPosition=%s", getPaddedBin(COMMANDS[i], binBufA), getPaddedBin(currentPosition, binBufB));
     if (COMMANDS[i] == currentPosition) {
       currentPositionIndex = i;
       break;
     }
   }
   if (currentPositionIndex == -1) {
-    DEBUG_PRINTF("moveProgramToClosestStop Error, non existent position detected, currentPosition= %s currentBitString=%s", getPaddedBin(currentPosition, binBuf), getPaddedBin(signals.bitString, binBuf));
+    DEBUG_PRINTF("moveProgramToClosestStop Error, non existent position detected, currentPosition=%s, bitstring=%s", getPaddedBin(currentPosition, binBufA), getPaddedBin(signals.bitString, binBufB));
     programModeStatus.programPos = -1;
   }
+  bool done = false;
   for (int i = 0; i < programModeStatus.stopsLength; i++) {
-    DEBUG_PRINTF("%d %d", programModeStatus.stops[i], currentPositionIndex);
-    if (programModeStatus.stops[i] >= currentPositionIndex) {
+    // DEBUG_PRINTF("%d %d", programModeStatus.stops[i], currentPositionIndex);
+    if (programModeStatus.stops[i] > currentPositionIndex) {
       //identified the position in the program next to the current one
+      done = true;
+    }
+    if (i > 0 && programModeStatus.stops[i] < programModeStatus.stops[i - 1]) {
+      // if the current stop in the program index is < than the previous, the sequence went above 40 and started from 01 again,
+      //assuming the sequence is "one way" (checks on serial commands avoid going backwards), this is the next stop
+      done = true;
+    }
+    if (done) {
       programModeStatus.programPos = i;
       DEBUG_PRINTF("moveProgramToClosestStop returning %d", programModeStatus.programPos);
       return;
     }
   }
+  //got to the bottom of the array, let's pick the first
   programModeStatus.programPos = 0;
   DEBUG_PRINTF("moveProgramToClosestStop returning (not found) %d", programModeStatus.programPos);
 }
@@ -519,7 +559,8 @@ void setup() {
 
 void loop() {
   delay(50);
-  char binBuf[9];
+  char binBufA[9];
+  char binBufB[9];
 
   // self reset every week, just in case I f*cked up and some variable would
   // overflow left unchecked (i.e. millis)
@@ -554,17 +595,35 @@ void loop() {
   //  - rotation is stopped, check if a valid position has been reached, and move on to the next step in the program
   //  - sleep (TODO make a non blockng one)
   if (signals.mode == PROGRAM_MODE) {
+
     if (programModeStatus.programPos == -1) {
       //at boot we need to recover what the next position is
       moveProgramToClosestStop(programModeStatus, signals);
       DEBUG_PRINTF("Recovering next program position: %d", programModeStatus.programPos);
     }
-    if (programModeStatus.programPos >= 0 ) {
-      if (programModeStatus.lastReachedProgramPos  < programModeStatus.programPos &&  ((millis() - programModeStatus.lastMovementMillis) > programModeStatus.stepsSeconds * 1000) || forceMoveToNextProgramStop == true) {
 
+    if (programModeStatus.programPos >= 0 ) {
+
+      //program mode enters once in this clause to trigger movement,
+      //-> last reached stop is behind the current programmed, and at least stepSeconds seconds have passed since last movement -> movement is triggered
+      //-> the blind keeps moving
+      //-> next iterations, lastReached still behind, lastMovement sitll > stepSeconds ago, we keep confirming movement
+      //-> UNTIL the blind isn't moving, Eureka! programmed stop reached!, we update program pos and last reached stop, and last movement millisecond
+      //-> on next iteration, we won't enter this IF clause, till the steps interval has expired
+      //
+      //
+      // OR
+      //
+      // there's a forced movement to make
+      // we keep entering regardless of elapsed milliseconds
+      // same as previous case, but we don't update last movement timestamp
+
+      if ((programModeStatus.lastReachedProgramPos  < programModeStatus.programPos &&  ((millis() - programModeStatus.lastMovementMillis) > ((unsigned long)programModeStatus.stepsSeconds * 1000))) || forceMoveToNextProgramStop == true) {
         setMotionEnabled(true, signals);
         //move to the desired position
+        DEBUG_PRINTF("Starting movement to reach %d %d %d", programModeStatus.programPos, programModeStatus.stops[programModeStatus.programPos], COMMANDS[programModeStatus.stops[programModeStatus.programPos]]);
         setStopSelector(COMMANDS[programModeStatus.stops[programModeStatus.programPos]], signals);
+
         //not running, maybe requered stop was received
         if (digitalRead(RUNNING_PIN) == LOW) {
           setMotionEnabled(false, signals);
@@ -575,13 +634,20 @@ void loop() {
             programModeStatus.lastReachedProgramPos = programModeStatus.programPos;
             programModeStatus.programPos =  (programModeStatus.programPos == programModeStatus.stopsLength - 1) ? 0 : programModeStatus.programPos + 1;
             programModeStatus.lastReachedProgramPos = programModeStatus.programPos > 0 ? programModeStatus.lastReachedProgramPos : -1;
+            DEBUG_PRINTF("New program pos reached %d, programpos %d", programModeStatus.lastReachedProgramPos, programModeStatus.programPos);
           } else {
             DEBUG_PRINTF("Requested position not reached, but blind not moving, possible malfunction (selected a stop between 21 and 25 maybe? checkk \"Unreachable Stops\" in deocumentation for details)");
             blinkFeedbackLed(300, 50, 5);
           }
-          DEBUG_PRINTF("Stopped at: %s bitString: %s",  getPaddedBin(currentBlindPosition, binBuf), getPaddedBin(signals.bitString, binBuf));
+          DEBUG_PRINTF("Stopped at: %s bitString: %s",  getPaddedBin(currentBlindPosition, binBufA), getPaddedBin(signals.bitString, binBufB));
           stopBlind(signals);
-          programModeStatus.lastMovementMillis = millis();
+
+          //if we came here following a button command, don't reset time till next step
+          if (forceMoveToNextProgramStop == false) {
+            programModeStatus.lastMovementMillis = millis();
+          } else {
+            forceMoveToNextProgramStop = false;
+          }
         }
       }
     }
@@ -590,6 +656,7 @@ void loop() {
       blinkFeedbackLed(300, 50, 2);
       delay(2000);
     }
+
   } else if (signals.mode == MANUAL_MODE) {
     setMotionEnabled(true, signals);
     setStopSelector(signals.bitString, signals);
@@ -599,7 +666,7 @@ void loop() {
       //requested stop reached
       if (currentBlindPosition == signals.bitString) {
         manualModeStatus.lastReachedManualStop = currentBlindPosition;
-        DEBUG_PRINTF("Stopped in manual mode at: %s, bitString: %s)", getPaddedBin(currentBlindPosition, binBuf), getPaddedBin(signals.bitString, binBuf));
+        DEBUG_PRINTF("Stopped in manual mode at: %s, bitString: %s)", getPaddedBin(currentBlindPosition, binBufA), getPaddedBin(signals.bitString, binBufB));
       } else if (manualModeStatus.lastReachedManualStop != currentBlindPosition) {
         DEBUG_PRINTF("Requested position not reached, but  blind not moving, possible malfunction (selected a stop between 21 and 25 maybe? check \"Unreachable Stops\" in deocumentation for details)");
         blinkFeedbackLed(300, 50, 5);
@@ -616,7 +683,7 @@ void loop() {
   int currentPositionIndex = positionExists(currentBlindPosition);
   //If we have stopped in some non existent place, let the user know
   if (currentPositionIndex < 0 && digitalRead(RUNNING_PIN) == LOW && currentBlindPosition > 0) {
-    DEBUG_PRINTF("Blind not moving, but detected a non existant roller contacts status %s, possible malfunction", getPaddedBin(currentBlindPosition, binBuf));
+    DEBUG_PRINTF("Blind not moving, but detected a non existant roller contacts status %s, possible malfunction", getPaddedBin(currentBlindPosition, binBufA));
     blinkFeedbackLed(300, 100, 5);
   }
 
@@ -632,8 +699,6 @@ void loop() {
     asm volatile("  jmp 0");
   }
 
-  //this can be active for max 1 loop
-  forceMoveToNextProgramStop = false;
 
   //two button press commands:
   //3 seconds, switch mode
@@ -669,10 +734,7 @@ void loop() {
       if (signals.mode == PROGRAM_MODE) {
         //this will force program mode to move one step forward on the next loop
         forceMoveToNextProgramStop = true;
-        //int nextProgramStopIndex=positionExists(COMMANDS[programModeStatus.programPos]);
-        //if(nextProgramStopIndex>currentPositio
-        programModeStatus.programPos =  (programModeStatus.programPos == programModeStatus.stopsLength - 1) ? 0 : programModeStatus.programPos + 1;
-      }
+           }
       else {
         //if I get here, I can assume currentBlindPosition is loaded, if it doesn't exist due to some failure, led blinked
         //currentBlindPosition = readBlindPosition(signals);
@@ -693,11 +755,30 @@ void loop() {
   }
 
 
+#ifndef DEBUG_MODE
+  /*
+      - Go to sleep if:
+        - we are not in debug mode
+        - motor is NOT runnig
+        - it's been more than 5 minutes since boot
+        - we haven't had a button or serial command in more than 5 minutes
+  */
 
+  if (digitalRead(RUNNING_PIN) == LOW && (millis() / 1000 > 30) && ((millis() - lastCommandReceived) / 1000) > 30) {
+    //this allows >95% sleep time, considering the loop takes a few tens msec, while retaining ease of use
+    Serial.println("Going To Sleep");
+    LowPower.idle(SLEEP_8S, ADC_OFF, TIMER4_OFF, TIMER3_OFF, TIMER1_OFF, TIMER0_ON, SPI_OFF, USART1_OFF, TWI_OFF, USB_ON);
+    Serial.println("Slept");
+    if (digitalRead(PUSH_BUTTON_PIN) == HIGH)  //If I've just come && ((millis() - lastCommandReceived) / 1000) > 10out of sleep and the button is pressed, let the user know
+    {
+      Serial.println("Back from sleep with the button pressed");
+      blinkFeedbackLed(200, 0, 1);
+      //If we're here, hten the switch went from OFF to ON, which counts as a command
+      lastCommandReceived = millis();
+      delay(200);
+    }
+    lastCommandReceived = millis();
+  }
+#endif
 
-}
-
-ISR(TIMER1_COMPA_vect) {
-  // This is the interrupt service routine that wakes up the microcontroller
-  // Do nothing here; the mere act of the interrupt firing wakes up the CPU.
 }
