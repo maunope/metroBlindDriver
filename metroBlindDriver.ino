@@ -132,7 +132,7 @@ const long int SECONDS_PER_DAY = 86400;
 
 const int RUNNING_PIN = 0;  //Reads high when the blind is rotating
 const int PUSH_BUTTON_PIN = 1;
-const int ENABLE_PIN = 10;  //Set to HIGH to enable the output relais coild
+const int ENABLE_PIN = 10;  //Set to HIGH to enable the output relais coil
 const int FEEDBACK_LED_PIN = 14;
 
 //output signal status and current mode stored here, at all times this
