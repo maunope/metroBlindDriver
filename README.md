@@ -1,6 +1,9 @@
 # Disclaimer
 This is still a prototype, the circuit design was built and tested on a perfboard, the kicad board design was never tested.  use at your risk and plz **don't  come whining if you damage stuff or set your house on fire.**
 
+# WARNING
+This project entails working with a 220V powered device, with a metail chassis and **no grounding**. these devices are 40+ years old and saw lots of abuse, wires insulations may fail, motor windings may short circuit. before wiring anything up, check impedance between the chassis, the engine hull and all contacts carrying 220V power, anything below 2 megaohms means insulations need to be re-checked. 
+Consider wiring the blind chassis to the ground line for additional safety
 
 # Metro Blinds Driver
 
@@ -35,7 +38,6 @@ The board design in this project runs 5V DC control signals and 220V power, it r
 
 ## Manual vs. Program mode
 
-(TODO some features still to be implemented)
 
 In **manual mode** (default) stops are selected thorugh serial port commands, or single button presses. The board led is lit during Manual mode. 
 
@@ -47,16 +49,14 @@ To switch between modes, either use serial commands or press the board button fo
 ## Dependencies
 
 
-- [Regexp](https://github.com/nickgammon/Regexp)
+- EEPROM (comes with Arduino IDE)
 - [Rocket Scream Low Power](https://github.com/rocketscream/Low-Power)
 
 
 ## Circuit Board
 
 
-**WORK IN PROGRESS** check the schematic in this repo, I've built and tested it on perfboard, board design might not be 100% correct, and definitely the layout could 
-use some improvement.
-
+check the schematic in this repo, I've built and tested it on perfboard, board design might not be 100% correct, and definitely the layout could use some improvement.
 
 
 **How to read led signals**
@@ -150,16 +150,22 @@ One command per line, max 32 chars long. the parser is pretty crude, pls stick t
 - **>>(stop name)** (i.e. >>ANANGNINA, >>CINECITTA) select stop by name (only works in manual mode)
 - **>>STOP** halt the motor
 - **>>RUN** continuously run the motor 
-- **>>PROGRAM** switch to Program mode
-- **>>MANUAL** switch to Manual mode (default)
-- **>>PROGRAMSTOPS[0-9][0-9][\,0,9]?** write program mode stops sequence (TODO)
-- **>>RESETDEFAULTS** reset default configuration (TODO)
+- **PROGRAMSTEPSSECONDS[0-9][0-9][0-9]** write steps duration for program mode, zero padded four digits
+- **<<PROGRAMSTEPSSECONDS** read steps duration for program mode
+- **>>DEFAULTPROGRAM** load the default stops program to memory
+- **>>PROGRAMSTOPS[0-9][0-9][\,0,9]?** write program mode stops sequence, zero terminated, up to 40 zero padded two digits positive integers, the sequence is required to be ascending (i.e. 1-2-3 valid, 1-3-2 not valid)
+- **<<PROGRAMSTOPS** print the program stops sequence currently in memory
+- **>>PROGRAMMODE** switch to Program mode
+- **>>MANUALMODE** switch to Manual mode (default)
+- **>>RESETDEFAULTS** reset default configuration 
 - **>>EEPROMDATA** read current conf from eeprom 
 - **<<EEPROMDATA** write current conf to eeprom
+- **<<POSITION** print the current blind roller position
+- **<<COMPILEDATETIME** print the sketch build timestamp
 
 ## Build flags
 
--DEBUG_MODE enable serial port debug messages
+-DEBUG_MODE enable serial port debug messages, disable sleep mode
 
 
 ## Unreachable stops
@@ -195,7 +201,5 @@ This behavior **did not** affect actual service on Roma Metro **A** as the 5 imp
 **A:** It is. any help much appreciated! ;-)
 
 ## Todo
-- EEPROM saved configuration
-- Button commands
 - Readme completion
-- Circuit board layout completion
+- Circuit board layout improvement
