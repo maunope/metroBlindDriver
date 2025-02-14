@@ -58,6 +58,7 @@ To switch between modes, either use serial commands or press the board button fo
 
 check the schematic in this repo, I've built and tested it on perfboard, board design might not be 100% correct, and definitely the layout could use some improvement.
 
+![Board layout](./boardLayout.png)
 
 **How to read led signals**
 
