@@ -2,7 +2,7 @@
 This is still a prototype, the circuit design was built and tested on a perfboard, the kicad board design was never tested.  use at your risk and plz **don't  come whining if you damage stuff or set your house on fire.**
 
 # WARNING
-This project entails working with a 220V powered device, with a metail chassis and **no grounding**. these devices are 40+ years old and saw lots of abuse, wires insulations may fail, motor windings may short circuit. before wiring anything up, check impedance between the chassis, the engine hull and all contacts carrying 220V power, anything below 2 megaohms means insulations need to be re-checked. 
+This project entails working with a 220V powered device, with a metal chassis and **no grounding**. these devices are 40+ years old and saw lots of abuse, wires insulations may fail, motor windings may short circuit. before wiring anything up, check impedance between the chassis, the engine hull and all contacts carrying 220V power, anything below 2 megaohms means insulations need to be re-checked. 
 Consider wiring the blind chassis to the ground line for additional safety
 
 # Metro Blinds Driver
