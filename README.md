@@ -64,10 +64,9 @@ check the schematic in this repo, I've built and tested it on perfboard, board d
 **How to read led signals**
 
 
-Either for good or bad news, green led will flash. red will stay on when general enable switch is on
+Either for good or bad news, Arduino board led will flash. 
 
-
-(WIP)
+![Led error codes](./ledCodes.png)
 
 ## Original electro mechanical control logic 
 
