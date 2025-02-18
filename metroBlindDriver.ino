@@ -684,7 +684,7 @@ void loop() {
   //If we have stopped in some non existent place, let the user know
   if (currentPositionIndex < 0 && digitalRead(RUNNING_PIN) == LOW && currentBlindPosition > 0) {
     DEBUG_PRINTF("Blind not moving, but detected a non existant roller contacts status %s, possible malfunction", getPaddedBin(currentBlindPosition, binBufA));
-    blinkFeedbackLed(300, 100, 5);
+    blinkFeedbackLed(300, 50, 5);
   }
 
   //track how long we've been moving the roller, protect from infinites loops
