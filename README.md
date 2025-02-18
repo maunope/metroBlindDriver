@@ -84,7 +84,13 @@ The original control board has 7 control pins, 2 relais coil pins and 2 motor po
 
 ![Din connector detail](./dinConnector.png)
 
-the control roller common pin is not wired to the relais coil, their pins are to be jumpered to run the blind control at 48V using its original relais.
+The original wiring:
+- Pin 1-6 and 12: stop selection bit string
+- Pin 11: unwired
+- Pin 10: 110V AC to relais terrupted line
+- Pin 9: Relais coil ( +48V signal from selection roller return line)
+- Pin 8: Relais coil N
+- Pin 7: 110V returning from motor
 
 ## Blind Board schematic and modifications
 
@@ -119,6 +125,14 @@ You might want to do things differently here, the circuit is easy enough to work
 Rewired schematic below:
 
 ![Original blind schematic](./blindBoardRewired.png)
+
+The new wiring:
+- Pin 1-6 and 12: 5V bit string
+- Pin 11: to motor relais NO contact on Arduino board
+- Pin 10: unwired, can be used to ground the blind chassis
+- Pin 9: to Arduino "Any Running" pin
+- Pin 8: unwired
+- Pin 7: to motor relais NO contact on Arduino board
 
 
 ## How to install and adjust
