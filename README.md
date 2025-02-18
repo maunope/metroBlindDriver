@@ -53,12 +53,13 @@ To switch between modes, either use serial commands or press the board button fo
 - [Rocket Scream Low Power](https://github.com/rocketscream/Low-Power)
 
 
-## Circuit Board
+## Arduino circuit board
 
 
 check the schematic in this repo, I've built and tested it on perfboard, board design might not be 100% correct, and definitely the layout could use some improvement.
 
-![Board layout](./boardLayout.png)
+![Arduino Board layout](./boardLayout.png)
+
 
 **How to read led signals**
 
@@ -85,11 +86,14 @@ The original control board has 7 control pins, 2 relais coil pins and 2 motor po
 
 the control roller common pin is not wired to the relais coil, their pins are to be jumpered to run the blind control at 48V using its original relais.
 
-**Full circuit diagram of original design coming**
+## Blind Board schematic and modifications
 
+the blind board schematic is available in  "metroBlindDriver blind board" Kicad design:
 
+![Original blind schematic](./blindBoardWiring.png)
 
-## 220V AC/5V DC modification
+In the original blind design, 48V DC bits would be fed in pins 1-6 and 12, they would reach the control roller throudh diodes and would power the 48V
+relays coil through the roller common pin, until the desired stop was reached. 
 
 The original blind wiring can be easily modificed to accept standard household 220V AC power and 5V DC signals, 
 
@@ -112,14 +116,18 @@ I wanted to preserve the original circuitry as much as possible, but definitely 
 I figured since I had already wired the motor for 220V AC another small modification wouldn't matter much, and moving a wire to a diffeent pin seemed way less invasive than replacing a relais and a big *ss resitor.
 You might want to do things differently here, the circuit is easy enough to work with, these are just my2c :-) 
 
-**AC power traces picture coming**
+Rewired schematic below:
+
+![Original blind schematic](./blindBoardRewired.png)
+
 
 ## How to install and adjust
 
 **First things first, let's not fry stuff**
 
 - Check wirings and tensions
-- See 220V AC/5V DC wiring diagrams above
+- **Mandatory** rewire the blind board to use and external 5V relais, **don't use 48V signals with this Arduino board design!**
+- **Optional** rewire the motor to run on 220V AC, if you happen to have a 110V AC power source, that will work fine
 - Wire the DIN connector pins, be sure not to short circuit anything
 - Power the board and the motor **L** wire
  **No smoke? good.**
