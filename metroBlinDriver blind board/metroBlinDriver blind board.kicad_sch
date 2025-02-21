@@ -2904,7 +2904,7 @@
 	)
 	(text "- Rewired motor from pin 10 to 11\n- Removed onboard relays\n- Pin 10 can be used to ground blind chassis"
 		(exclude_from_sim no)
-		(at 85.852 164.846 0)
+		(at 85.852 174.244 0)
 		(effects
 			(font
 				(size 1.27 1.27)

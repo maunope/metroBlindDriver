@@ -158,13 +158,13 @@ By Default the controller will wait for commands in manual mode with the board l
 
 ## Serial port commands
 
-Commands format: **(<<|>>)[A-Z]{1,10}[a-z,A-Z,0-9]{1,20}**
+Commands format: **(<<|>>)[A-Z,0-9]+**
 
 - **<<** to read info, **>>** to set
 - command name, in caps
-- (where applicable) parameter
+- (where applicable) parameters
 
-One command per line, max 32 chars long. the parser is pretty crude, pls stick to tested commands ;-) 
+One command per line, the parser is pretty crude, pls stick to tested commands ;-) 
 
 **Available commands**:
 
@@ -172,10 +172,10 @@ One command per line, max 32 chars long. the parser is pretty crude, pls stick t
 - **>>(stop name)** (i.e. >>ANANGNINA, >>CINECITTA) select stop by name (only works in manual mode)
 - **>>STOP** halt the motor
 - **>>RUN** continuously run the motor 
-- **PROGRAMSTEPSSECONDS[0-9][0-9][0-9]** write steps duration for program mode, zero padded four digits
+- **>>PROGRAMSTEPSSECONDS[0-9]{4}** write steps duration for program mode, zero padded four digits
 - **<<PROGRAMSTEPSSECONDS** read steps duration for program mode
 - **>>DEFAULTPROGRAM** load the default stops program to memory
-- **>>PROGRAMSTOPS[0-9][0-9][\,0,9]?** write program mode stops sequence, zero terminated, up to 40 zero padded two digits positive integers, the sequence is required to be ascending (i.e. 1-2-3 valid, 1-3-2 not valid)
+- **>>PROGRAMSTOPS[0-9][0-9](?:[0-9][0-9]){0,39}** write program mode stops sequence, zero terminated, up to 40 zero padded two digits positive integers, the sequence is required to be ascending (i.e. 1-2-3 valid, 1-3-2 not valid)
 - **<<PROGRAMSTOPS** print the program stops sequence currently in memory
 - **>>PROGRAMMODE** switch to Program mode
 - **>>MANUALMODE** switch to Manual mode (default)
@@ -217,6 +217,18 @@ This behavior **did not** affect actual service on Roma Metro **A** as the 5 imp
 **Q:** I can't tell what's going on with eeprom data
 
 **A:** <<EEPROMDATA command can extracts all the info saved on the eeprom
+
+**Q:** I keep getting "unexistent stop" error
+
+**A:** check wiring, any short circuit? any missing wire? 
+
+**Q:** Motor buzzeds and doesn't spin! what's wrong?
+
+**A:** Have you rewired the motor correctly? 
+
+**Q:** I rebooted the board, and all my configurations are lost
+
+**A:** Run >>EEPROMDATA to persist configuration on eeprom
 
 **Q:** That PCB design is **lame**!
 
