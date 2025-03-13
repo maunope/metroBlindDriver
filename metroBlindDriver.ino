@@ -79,7 +79,7 @@ const int PROGRAM_MODE = 1;
 
 const byte COMMANDS[]  = {
   0b00000000,  // 00 (Stop the blind, wherever it is)
-  0b00110100,  // 01 Fuori servizio
+  0b00110100,  // 01 Fuori servizio 
   0b10001100, 0b01001100, 0b00101100, 0b00011100, 0b11000010, 0b10100010, 0b01100010, 0b10010010, //02-26 blank  space
   0b01010010, 0b00110010, 0b10001010, 0b01001010, 0b00101010, 0b00011010, 0b10000110, 0b01000110,
   0b00100110, 0b00010110, 0b00001110, 0b11000000, 0b10100000, 0b01100000, 0b10010000, 0b01010000,
@@ -88,15 +88,15 @@ const byte COMMANDS[]  = {
   0b10110000,
   0b01110000,  // 29 Cinecittà
   0b11001000,
-  0b10101000,  // 31 Arco di Travertino
+  0b10101000,  // 31 Arco di Travertino 
   0b01101000,
-  0b10011000,  // 33 San giovanni
+  0b10011000,  // 33 San giovanni 
   0b01011000,
-  0b00111000,  // 35 Termini
+  0b00111000,  // 35 Termini 
   0b11000100,
-  0b10100100,  // 37 Lepanto
+  0b10100100,  // 37 Lepanto 
   0b01100100,
-  0b10010100,  // 39 Ottaviano
+  0b10010100,  // 39 Ottaviano 
   0b01010100,
   0b11111111   // 41 (Run the blind, wherever it is)};
 };
@@ -104,7 +104,8 @@ const byte COMMANDS[]  = {
 const int COMMANDSLEN = 41;
 
 //map pins to bit string positions, 0 ot 6
-const int PIN_MAP[] = { 3, 4, 5, 6, 7, 8, 9 };
+//const int PIN_MAP[] = { 3, 4, 5, 6, 7, 8, 9 };
+const int PIN_MAP[] = { 9, 8, 7, 6, 5, 4, 3 };
 
 //indexes of Roma Metropolitana A stops
 const int STOP = 0;
@@ -156,6 +157,16 @@ unsigned long pushButtonPressedMillis = 0;
 EEpromData eepromData;
 
 bool forceMoveToNextProgramStop = false;
+
+//resets default configuration and stops the blind,  doesn't persist data to eeprom
+void resetDefaults(Signals& signals, ProgramModeStatus& programModeStatus, ManualModeStatus& manualModeStatus)
+{
+  stopBlind(signals);
+  setMode(DEFAULT_MODE, signals, programModeStatus, manualModeStatus);
+  memcpy(programModeStatus.stops, DEFAULT_PROGRAM, sizeof(DEFAULT_PROGRAM));
+  programModeStatus.stopsLength = DEFAULT_PROGRAM_LENGTH;
+  programModeStatus.stepsSeconds  = DEFAULT_SECONDS_BETWEEN_STEPS;
+}
 
 //writes current conf to eeprom, no validation
 int writeConfToEEprom(Signals signals, ProgramModeStatus programModeStatus)
@@ -318,9 +329,13 @@ void parseSerialCommands(char command[], Signals& signals, ProgramModeStatus& pr
     } else {
       Serial.println("Invalid stop index received");
     }
-  } else if (strcmp(command, (">>STOP")) == 0) {
+  }
+  else if (strcmp(command, "<<MILLIS") == 0) {
+    Serial.println(millis());
+  }
+  else if (strcmp(command, (">>STOP")) == 0) {
     stopBlind(signals);
-    Serial.println("Blind stop command received");
+    Serial.println(F("Blind stop command received"));
   } else if (strcmp(command, (">>RUN")) == 0) {
     runBlind(signals);
     Serial.println("Blind run command received");
@@ -419,6 +434,7 @@ void parseSerialCommands(char command[], Signals& signals, ProgramModeStatus& pr
     setMode(MANUAL_MODE, signals, programModeStatus, manualModeStatus);
     Serial.println("Manual blind movement selected");
   } else if (strcmp(command, ">>RESETDEFAULTS") == 0) {
+    resetDefaults(signals, programModeStatus, manualModeStatus);
     Serial.println("Loaded default configuration, run >>EEPROMDATA to persist");
   } else if (strcmp(command, "<<POSITION") == 0) {
     Serial.println(getPaddedBin(readBlindPosition(signals), binBufA));
@@ -548,11 +564,18 @@ void setup() {
   EEpromData eepromBuf;
   if (loadConfFromEEprom(eepromBuf) != 0) {
     blinkFeedbackLed(50, 50, 50);
+    resetDefaults(signals, programModeStatus, manualModeStatus);
+    DEBUG_PRINTF("Invalid EEPROM conf found, Saving default conf to EEPROM");
+    writeConfToEEprom(signals, programModeStatus);
   }
-  memcpy(programModeStatus.stops, eepromBuf.programStops, sizeof(eepromBuf.programStops));
-  programModeStatus.stopsLength = eepromBuf.programLength;
-  programModeStatus.stepsSeconds = eepromBuf.programStepsSeconds;
-  setMode(eepromBuf.mode, signals, programModeStatus, manualModeStatus);
+  else
+  {
+    memcpy(programModeStatus.stops, eepromBuf.programStops, sizeof(eepromBuf.programStops));
+    programModeStatus.stopsLength = eepromBuf.programLength;
+    programModeStatus.stepsSeconds = eepromBuf.programStepsSeconds;
+    setMode(eepromBuf.mode, signals, programModeStatus, manualModeStatus);
+  }
+
 
 
 }
@@ -734,7 +757,7 @@ void loop() {
       if (signals.mode == PROGRAM_MODE) {
         //this will force program mode to move one step forward on the next loop
         forceMoveToNextProgramStop = true;
-           }
+      }
       else {
         //if I get here, I can assume currentBlindPosition is loaded, if it doesn't exist due to some failure, led blinked
         //currentBlindPosition = readBlindPosition(signals);
@@ -777,7 +800,6 @@ void loop() {
       lastCommandReceived = millis();
       delay(200);
     }
-    lastCommandReceived = millis();
   }
 #endif
 
