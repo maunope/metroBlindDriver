@@ -624,6 +624,11 @@ void loop() {
       moveProgramToClosestStop(programModeStatus, signals);
       DEBUG_PRINTF("Recovering next program position: %d", programModeStatus.programPos);
     }
+    if (programModeStatus.programPos == -1){
+       //if programPos is still equals -1, we failed to read a valid position, likely the roller was halted amidsts two stops, let's just restart from 0 then
+       programModeStatus.programPos = 0;
+       DEBUG_PRINTF("Resetting program mode pos to 0");
+    }
 
     if (programModeStatus.programPos >= 0 ) {
 
