@@ -171,8 +171,8 @@ One command per line; the parser is pretty crude, please stick to tested command
 - **>>PROGRAMMODE** switch to Program mode
 - **>>MANUALMODE** switch to Manual mode (default)
 - **>>RESETDEFAULTS** reset default configuration 
-- **>>EEPROMDATA** read current conf from eeprom 
-- **<<EEPROMDATA** write current conf to eeprom
+- **<<EEPROMDATA** print current eeprom conf
+- **>>EEPROMDATA** write current conf from ram to eeprom
 - **<<POSITION** print the current blind roller position
 - **<<COMPILEDATETIME** print the sketch build timestamp
 
