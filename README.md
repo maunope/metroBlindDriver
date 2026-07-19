@@ -35,6 +35,10 @@ The board design in this project runs 5V DC control signals and 220V power, it r
 - Allows to save configurations to the Arduino EEprom
 - Implements several controls prevent damage/overheating in case of malfunctions
 
+## Lateral blind design
+The `LATERAL_BLIND` compile flag enables a command table built for smaller punched rollers found on side-mounted train blinds. This mode is intended to address blinds with smaller punched rollers, those mounted on the side of trains rather than the larger frontal rollers.
+
+On the specimen I tested, the pinout was different compared to the larger frontal roller, but this may not always be true. If your roller is different, you may need to recreate the command array for your exact roller.
 
 ## Manual vs. Program mode
 
@@ -229,6 +233,10 @@ This behavior **did not** affect actual service on Roma Metro **A** as the 5 imp
 **Q:** I rebooted the board, and all my configurations are lost
 
 **A:** Run >>EEPROMDATA to persist configuration on eeprom
+
+**Q:** I have disassembled the punched roller and now it doesn't stop on the right positions.
+
+**A:** If the roller is misaligned, it will not work correctly. The solution is to disassemble it again, align it to the right stop, and reassemble it. It is possible to fine tune it by undoing the screw on the roller side and moving the outer plate slightly.
 
 **Q:** That PCB design is **lame**!
 

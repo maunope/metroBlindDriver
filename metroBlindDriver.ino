@@ -2,9 +2,19 @@
 #include <LowPower.h>                //https://github.com/rocketscream/Low-Power
 #include <EEPROM.h>
 
+// Uncomment the next line to switch to the lateral-blind command table.
+#define LATERAL_BLIND
+#define DEBUG_MODE
 
 
-//#define DEBUG_MODE
+
+#ifdef LATERAL_BLIND
+const int MAX_STOPS = 30;
+#else
+const int MAX_STOPS = 40;
+#endif
+
+
 
 struct ProgramModeStatus
 {
@@ -14,7 +24,7 @@ struct ProgramModeStatus
   int lastReachedProgramPos = -1;
   //last recorded movement millis
   unsigned long lastMovementMillis = 0;
-  byte stops[40] = {};
+  byte stops[MAX_STOPS] = {};
   byte stopsLength = 0;
   int stepsSeconds = -1;
 };
@@ -39,7 +49,7 @@ struct Signals
 struct EEpromData
 {
   int mode = -1;
-  byte programStops[40];
+  byte programStops[MAX_STOPS];
   byte programLength = 0;
   int programStepsSeconds = -1;
 };
@@ -72,11 +82,65 @@ const int MANUAL_MODE = 0;
 const int PROGRAM_MODE = 1;
 
 
+
 //8 bits strings corresponding to each Roma Metropolitana A blind position
 //rightmost bit is not relevant as the corresponding pin on the blind bit strings roller is not connected
 //sorting mirrors the punch hole roller's, first element selection ("Fuori Servizio") is arbitrary
 //first (0000000) and last (1111111) strings are "set all pins LOW/HIGH" commands, which have no correspondance on the roller
 
+#ifdef LATERAL_BLIND
+const byte COMMANDS[] = {
+  0b00000000,  // 00 (Stop the blind, wherever it is)
+  0b01001010, //1 ANAGNINA
+  0b00101010, //2
+  0b00011010, //3 CINECITTA
+  0b11100000, //4
+  0b11010000, //5 ARCODEITRAVERTINO
+  0b10110000, //6 
+  0b01110000, //7 SANGIOVANNI 
+  0b11001000, //8
+  0b10101000, //9 TERMINI
+  0b01101000, //10
+  0b10011000, //11 LEPANTO
+  0b01011000, //12
+  0b00111000, //13 OTTAVIANO
+  0b11000100, //14 
+  0b10100100, //15 FUORI SERVIZIO
+  0b01100100, //16 BUONE
+  0b10010100, //17 
+  0b01010100, //18 BUONE
+  0b00110100, //19 VACANZE
+  0b10001100, //20 
+  0b01001100, //21 ANCHE A TE
+  0b00101100, //22 E FAMIGLIA
+  0b00011100, //23 
+  0b11000010, //24 
+  0b10100010, //25
+  0b01100010, //26
+  0b10010010, //27
+  0b01010010, //28
+  0b00110010, //29
+  0b10001010, //30
+  0b11111111   // 31 (Run the blind, wherever it is)
+};
+const int COMMANDSLEN = 32;
+const int STOP = 0;
+const int ANAGNINA = 1;
+const int CINECITTA = 3;
+const int ARCODITRAVERTINO = 5;
+const int SANGIOVANNI = 7;
+const int TERMINI = 9;
+const int LEPANTO = 11;
+const int OTTAVIANO = 13;
+const int FUORISERVIZIO = 15;
+const int RUN = 31;
+
+//19 BUONE
+//20 VACANZE
+//22 ANCHE A TE
+//23 E FAMIGLIA
+
+#else
 const byte COMMANDS[]  = {
   0b00000000,  // 00 (Stop the blind, wherever it is)
   0b00110100,  // 01 Fuori servizio 
@@ -98,14 +162,10 @@ const byte COMMANDS[]  = {
   0b01100100,
   0b10010100,  // 39 Ottaviano 
   0b01010100,
-  0b11111111   // 41 (Run the blind, wherever it is)};
+  0b11111111   // 41 (Run the blind, wherever it is)
 };
 //the blind has 40 stops, and this is going to change :-)
 const int COMMANDSLEN = 41;
-
-//map pins to bit string positions, 0 ot 6
-//const int PIN_MAP[] = { 3, 4, 5, 6, 7, 8, 9 };
-const int PIN_MAP[] = { 9, 8, 7, 6, 5, 4, 3 };
 
 //indexes of Roma Metropolitana A stops
 const int STOP = 0;
@@ -118,6 +178,11 @@ const int TERMINI = 35;
 const int LEPANTO = 37;
 const int OTTAVIANO = 39;
 const int RUN = 41;
+#endif
+
+//map pins to bit string positions, 0 ot 6
+//const int PIN_MAP[] = { 3, 4, 5, 6, 7, 8, 9 };
+const int PIN_MAP[] = { 9, 8, 7, 6, 5, 4, 3 };
 
 //10 seconds are approx. 2.5 full revolutions
 const int MAX_CONTINUOS_RUN_SECS = 10;
@@ -148,7 +213,11 @@ unsigned long movementStartedMillis = 0;
 unsigned long lastCommandReceived = 0;
 
 //this default program cycles stops from Anagnina to Fuori servizio
-const byte  DEFAULT_PROGRAM[40] = {27, 29, 31, 33, 35, 37, 39,  01};
+#ifdef LATERAL_BLIND
+const byte DEFAULT_PROGRAM[MAX_STOPS] = {1, 3, 5, 7, 9, 11, 13, 15};
+#else
+const byte DEFAULT_PROGRAM[MAX_STOPS] = {27, 29, 31, 33, 35, 37, 39,  01};
+#endif
 byte DEFAULT_PROGRAM_LENGTH = 8;
 
 // how long the push button has been pressed
@@ -157,6 +226,17 @@ unsigned long pushButtonPressedMillis = 0;
 EEpromData eepromData;
 
 bool forceMoveToNextProgramStop = false;
+unsigned long lastPositionLogMillis = 0;
+
+// Forward declarations for functions defined later in the sketch.
+void setStopSelector(byte newBitString, Signals& signals);
+void stopBlind(Signals& signals);
+void runBlind(Signals& signals);
+bool setMotionEnabled(bool enable, Signals& signals);
+byte readBlindPosition(Signals& signals);
+void parseSerialCommands(char command[], Signals& signals, ProgramModeStatus& programModeStatus, ManualModeStatus& manualModeStatus);
+void moveProgramToClosestStop(ProgramModeStatus& programModeStatus, Signals& signals);
+void setMode(int newMode, Signals& signals, ProgramModeStatus& programModeStatus, ManualModeStatus& manualModeStatus);
 
 //resets default configuration and stops the blind,  doesn't persist data to eeprom
 void resetDefaults(Signals& signals, ProgramModeStatus& programModeStatus, ManualModeStatus& manualModeStatus)
@@ -194,14 +274,14 @@ int loadConfFromEEprom(EEpromData& eepromData)
     eepromData.programStepsSeconds = DEFAULT_SECONDS_BETWEEN_STEPS;
     exitStatus = -1;
   }
-  if (eepromData.programLength > 40) {
+  if (eepromData.programLength > MAX_STOPS) {
     DEBUG_PRINTF("Corrupted EEProm data, invalid program length, reverting to 0");
     eepromData.programLength = 0;
     exitStatus = -1;
   }
   for (int i = 0; i < eepromData.programLength; i++) {
-    if (eepromData.programStops[i] < 0 || eepromData.programStops[i] > 40) {
-      DEBUG_PRINTF("Corrupted EEProm data, invalid sto selection in program, reverting to blank program");
+    if (eepromData.programStops[i] <0  || eepromData.programStops[i] >= COMMANDSLEN) {
+      DEBUG_PRINTF("Corrupted EEProm data, invalid stop selection in program, reverting to blank program");
       exitStatus = -1;
     }
   }
@@ -577,7 +657,6 @@ void setup() {
   }
 
 
-
 }
 
 void loop() {
@@ -590,6 +669,14 @@ void loop() {
   if (millis() / 1000 >= SECONDS_PER_DAY * 7) {
     asm volatile("  jmp 0");
   }
+
+  #ifdef DEBUG_MODE
+  if ((millis() - lastPositionLogMillis) >= 2000) {
+    lastPositionLogMillis = millis();
+    byte loggedPosition = readBlindPosition(signals);
+    DEBUG_PRINTF("Roller position: %s (%d)", getPaddedBin(loggedPosition, binBufA), loggedPosition);
+  }
+  #endif
 
   if (Serial.available() > 0) {
     char command[128];
@@ -664,8 +751,8 @@ void loop() {
             programModeStatus.lastReachedProgramPos = programModeStatus.programPos > 0 ? programModeStatus.lastReachedProgramPos : -1;
             DEBUG_PRINTF("New program pos reached %d, programpos %d", programModeStatus.lastReachedProgramPos, programModeStatus.programPos);
           } else {
-            DEBUG_PRINTF("Requested position not reached, but blind not moving, possible malfunction (selected a stop between 21 and 25 maybe? checkk \"Unreachable Stops\" in deocumentation for details)");
-            blinkFeedbackLed(300, 50, 5);
+             DEBUG_PRINTF("Requested position not reached, but blind not moving, possible malfunction (selected a stop between 21 and 25 maybe? checkk \"Unreachable Stops\" in deocumentation for details)");
+             blinkFeedbackLed(300, 50, 5);
           }
           DEBUG_PRINTF("Stopped at: %s bitString: %s",  getPaddedBin(currentBlindPosition, binBufA), getPaddedBin(signals.bitString, binBufB));
           stopBlind(signals);
@@ -681,8 +768,8 @@ void loop() {
     }
     else {
       DEBUG_PRINTF("ERROR, could not recover program position");
-      blinkFeedbackLed(300, 50, 2);
-      delay(2000);
+       blinkFeedbackLed(300, 50, 2);
+       delay(2000);
     }
 
   } else if (signals.mode == MANUAL_MODE) {
@@ -700,12 +787,12 @@ void loop() {
         blinkFeedbackLed(300, 50, 5);
 
       }
-      stopBlind(signals);
+        stopBlind(signals);
     }
   } else {
     DEBUG_PRINTF("ERROR, unknown mode: %d", signals.mode);
-    blinkFeedbackLed(100, 100, 10);
-    delay(2000);
+     blinkFeedbackLed(100, 100, 10);
+     delay(2000);
   }
 
   int currentPositionIndex = positionExists(currentBlindPosition);
@@ -719,12 +806,12 @@ void loop() {
   movementStartedMillis = (digitalRead(RUNNING_PIN) == LOW ? 0 : ((movementStartedMillis == 0) ? millis() : movementStartedMillis));
   //give and error message and reset in case we've exceeded the maximum allowed uninterrupted run time
   if ((millis() - movementStartedMillis) / 1000 > MAX_CONTINUOS_RUN_SECS && movementStartedMillis > 0) {
-    DEBUG_PRINTF("Maximum continuous run exceeded, %d seconds, max allowed: %d pausing for 30seconds and rebooting", ((millis() - movementStartedMillis) / 1000), MAX_CONTINUOS_RUN_SECS);
-    setMotionEnabled(false, signals);
-    stopBlind(signals);
-    blinkFeedbackLed(100, 100, 20);
-    delay(30000);
-    asm volatile("  jmp 0");
+     DEBUG_PRINTF("Maximum continuous run exceeded, %d seconds, max allowed: %d pausing for 30seconds and rebooting", ((millis() - movementStartedMillis) / 1000), MAX_CONTINUOS_RUN_SECS);
+     setMotionEnabled(false, signals);
+     stopBlind(signals);
+     blinkFeedbackLed(100, 100, 20);
+     delay(30000);
+     asm volatile("  jmp 0");
   }
 
 
@@ -753,7 +840,7 @@ void loop() {
       pushButtonPressedMillis = 0;
     }
   }
-  // short press
+   // short press
   else if (pushButtonPressedMillis > 0) {
     pushButtonPressedMillis = 0;
     lastCommandReceived = millis();
