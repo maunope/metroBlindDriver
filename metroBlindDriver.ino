@@ -4,7 +4,7 @@
 
 // Uncomment the next line to switch to the lateral-blind command table.
 #define LATERAL_BLIND
-#define DEBUG_MODE
+//#define DEBUG_MODE
 
 
 
@@ -87,6 +87,9 @@ const int PROGRAM_MODE = 1;
 //rightmost bit is not relevant as the corresponding pin on the blind bit strings roller is not connected
 //sorting mirrors the punch hole roller's, first element selection ("Fuori Servizio") is arbitrary
 //first (0000000) and last (1111111) strings are "set all pins LOW/HIGH" commands, which have no correspondance on the roller
+//NOTE: the two COMMANDS[] tables below  use different byte values for the same stop names.
+//We double-checked the stop codes and they are not just reversed or simple bit-shifted variants of each other;
+//they are different encodings between the two branches, so the code must keep both tables separate.
 
 #ifdef LATERAL_BLIND
 const byte COMMANDS[] = {
@@ -214,11 +217,13 @@ unsigned long lastCommandReceived = 0;
 
 //this default program cycles stops from Anagnina to Fuori servizio
 #ifdef LATERAL_BLIND
-const byte DEFAULT_PROGRAM[MAX_STOPS] = {1, 3, 5, 7, 9, 11, 13, 15};
+const byte DEFAULT_PROGRAM[MAX_STOPS] = {1, 3, 5, 7, 9, 11, 13, 15, 16, 17, 19, 20, 22, 23};
+byte DEFAULT_PROGRAM_LENGTH = 14;
 #else
 const byte DEFAULT_PROGRAM[MAX_STOPS] = {27, 29, 31, 33, 35, 37, 39,  01};
-#endif
 byte DEFAULT_PROGRAM_LENGTH = 8;
+#endif
+
 
 // how long the push button has been pressed
 unsigned long pushButtonPressedMillis = 0;
